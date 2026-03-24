@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEck</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: #1e1e2e;
+      --text: #e4e4ef;
+      --muted: #7a7a8e;
+      --accent: #6366f1;
+    }
+
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* Slide layout */
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 4rem 2rem;
+      position: relative;
+    }
+
+    .slide + .slide { border-top: 1px solid var(--border); }
+
+    /* Hero */
+    .hero-logos {
+      display: flex;
+      gap: 3rem;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 3rem;
+    }
+    .hero-logos img {
+      height: 64px;
+      opacity: 0.92;
+    }
+    .hero-logos img.kops { height: 80px; }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .subtitle {
+      font-size: clamp(1rem, 2vw, 1.35rem);
+      color: var(--muted);
+      text-align: center;
+      max-width: 640px;
+      line-height: 1.6;
+    }
+
+    /* Content slides */
+    .slide-content {
+      max-width: 900px;
+      width: 100%;
+    }
+    .slide-content h2 {
+      font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 2rem;
+    }
+    .slide-content p {
+      font-size: 1.125rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Cards grid */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    .card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .card p {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Partner logos */
+    .partners {
+      display: flex;
+      gap: 4rem;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 3rem;
+    }
+    .partners img {
+      height: 48px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    .partners img:hover { opacity: 1; }
+
+    /* Number highlight */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 2rem;
+      margin-top: 2rem;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat .number {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .stat .label {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+    }
+
+    /* Slide number indicator */
+    .slide-indicator {
+      position: fixed;
+      right: 2rem;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      z-index: 100;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background 0.3s, transform 0.3s;
+    }
+    .dot.active {
+      background: var(--accent);
+      transform: scale(1.4);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    /* Fade in */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 640px) {
+      .hero-logos { gap: 1.5rem; }
+      .hero-logos img { height: 40px; }
+      .hero-logos img.kops { height: 52px; }
+      .partners img { height: 32px; }
+      .slide { padding: 3rem 1.25rem; }
+      .slide-indicator { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Slide indicators -->
+  <nav class="slide-indicator" aria-label="Slide navigation">
+    <div class="dot active" data-slide="0"></div>
+    <div class="dot" data-slide="1"></div>
+    <div class="dot" data-slide="2"></div>
+    <div class="dot" data-slide="3"></div>
+    <div class="dot" data-slide="4"></div>
+  </nav>
+
+  <!-- Slide 1: Hero -->
+  <section class="slide" id="slide-0">
+    <div class="hero-logos fade-in">
+      <img src="assets/kops.svg" alt="KOPS" class="kops">
+    </div>
+    <h1 class="fade-in">The Future of Trading</h1>
+    <p class="subtitle fade-in">A unified ecosystem connecting traders, tools, and technology.</p>
+  </section>
+
+  <!-- Slide 2: Overview -->
+  <section class="slide" id="slide-1">
+    <div class="slide-content fade-in">
+      <h2>What We Do</h2>
+      <p>We build infrastructure and products that empower traders at every level. From real-time market data to automated strategies, our platforms deliver the edge you need.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Analytics</h3>
+          <p>Deep market insights powered by real-time data pipelines and custom indicators.</p>
+        </div>
+        <div class="card">
+          <h3>Execution</h3>
+          <p>Low-latency order routing with smart execution across multiple venues.</p>
+        </div>
+        <div class="card">
+          <h3>Community</h3>
+          <p>A network of traders sharing strategies, signals, and market intelligence.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 3: Metrics -->
+  <section class="slide" id="slide-2">
+    <div class="slide-content fade-in">
+      <h2>By the Numbers</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="number">12K+</div>
+          <div class="label">Active Traders</div>
+        </div>
+        <div class="stat">
+          <div class="number">$2.4B</div>
+          <div class="label">Volume Processed</div>
+        </div>
+        <div class="stat">
+          <div class="number">99.9%</div>
+          <div class="label">Uptime</div>
+        </div>
+        <div class="stat">
+          <div class="number">&lt;5ms</div>
+          <div class="label">Avg Latency</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 4: Ecosystem / Partners -->
+  <section class="slide" id="slide-3">
+    <div class="slide-content fade-in">
+      <h2>Our Ecosystem</h2>
+      <p>Powered by a suite of products built to work together seamlessly.</p>
+      <div class="partners">
+        <img src="assets/kops.svg" alt="KOPS">
+        <img src="assets/tail.trade.svg" alt="tail.trade">
+        <img src="assets/notch.svg" alt="notch">
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 5: CTA -->
+  <section class="slide" id="slide-4">
+    <div class="slide-content fade-in" style="text-align: center;">
+      <h2>Get in Touch</h2>
+      <p style="margin-bottom: 2rem;">Ready to level up your trading infrastructure? Let's talk.</p>
+    </div>
+  </section>
+
+  <div class="footer">&copy; 2026</div>
+
+  <script>
+    // Intersection observer for fade-in
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) e.target.classList.add('visible');
+      });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+    // Slide indicator
+    const dots = document.querySelectorAll('.dot');
+    const slides = document.querySelectorAll('.slide');
+    const slideObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          const idx = e.target.id.split('-')[1];
+          dots.forEach(d => d.classList.remove('active'));
+          dots[idx]?.classList.add('active');
+        }
+      });
+    }, { threshold: 0.5 });
+    slides.forEach(s => slideObserver.observe(s));
+  </script>
+</body>
+</html>
