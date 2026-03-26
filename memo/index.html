@@ -348,16 +348,61 @@ p strong {
 }
 .contact a:hover { color: var(--lime); }
 
+/* === TABLET === */
+@media (max-width: 840px) {
+  .hero { padding: 120px 24px 60px; }
+  .content { padding: 0 24px 80px; }
+  .hero h1 svg { width: 260px; height: auto; }
+  .nav-inner { padding: 12px 24px; }
+  .faq-item { padding: 24px; }
+  .entity-card { padding: 20px 24px; }
+}
+
 /* === MOBILE === */
 @media (max-width: 640px) {
-  .hero { padding: 100px 20px 60px; }
-  .content { padding: 0 20px 80px; }
-  h2 { font-size: 24px; }
-  body { font-size: 16px; }
-  .faq-item { padding: 20px; }
-  .entity-card { padding: 20px; }
-  .ask-box { padding: 24px; }
-  .nav-inner { padding: 12px 20px; }
+  body { font-size: 16px; line-height: 1.7; }
+
+  .nav-inner { padding: 10px 16px; }
+  .nav-logo svg { width: 60px; height: auto; }
+  .nav-label { font-size: 10px; letter-spacing: 0.05em; }
+
+  .hero { padding: 80px 16px 48px; }
+  .hero-label { font-size: 10px; margin-bottom: 20px; }
+  .hero h1 svg { width: 200px; height: auto; }
+  .hero-sub { font-size: 18px; margin-bottom: 32px; }
+  .hero-meta { font-size: 12px; line-height: 1.9; }
+  .hero-actions { flex-direction: column; gap: 8px; margin-top: 24px; }
+  .hero-btn { justify-content: center; width: 100%; padding: 12px 20px; font-size: 13px; }
+
+  .content { padding: 0 16px 60px; }
+
+  h2 { font-size: 22px; margin-bottom: 18px; }
+  h3 { font-size: 17px; margin-top: 28px; margin-bottom: 12px; }
+  p { margin-bottom: 18px; }
+
+  .section { padding-top: 40px; margin-bottom: 8px; }
+
+  .faq-item { padding: 18px; border-radius: 10px; margin-bottom: 12px; }
+  .faq-item h3 { font-size: 16px; }
+  .faq-item p { font-size: 15px; }
+
+  .entities { gap: 10px; margin: 20px 0; }
+  .entity-card { padding: 18px; border-radius: 10px; }
+  .entity-label { font-size: 10px; }
+  .entity-name { font-size: 17px; margin-bottom: 8px; }
+  .entity-card p { font-size: 14px; }
+
+  .risk-card { padding: 16px 18px; margin-bottom: 12px; }
+  .risk-card strong { font-size: 15px; }
+  .risk-card p { font-size: 15px; }
+
+  .ask-box { padding: 24px 16px; border-radius: 12px; margin: 24px 0; }
+  .ask-number { font-size: 36px; }
+  .ask-detail { font-size: 12px; }
+
+  .closing-line { font-size: 18px; padding: 36px 0; margin-top: 36px; }
+
+  .contact { padding: 24px 0 48px; }
 }
 
 /* === FADE IN === */
