@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notch Waitlist</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { margin: 0; background: #08090b; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+const LIME = "#b2ed68";
+const BG = "#08090b";
+const CARD = "#0d0f13";
+const BORDER = "#1a1c21";
+const MUTED = "#4a4d55";
+const GREEN = "#00e676";
+const RED = "#ff1744";
+
+const TEAMS = [
+  { name: "Arsenal", price: 4.20, league: "EPL" },
+  { name: "Liverpool", price: 5.85, league: "EPL" },
+  { name: "Real Madrid", price: 8.10, league: "ESP" },
+  { name: "Barcelona", price: 7.45, league: "ESP" },
+  { name: "Man City", price: 4.90, league: "EPL" },
+  { name: "Bayern", price: 6.30, league: "BUN" },
+  { name: "Inter", price: 5.20, league: "ITA" },
+  { name: "PSG", price: 5.60, league: "FRA" },
+  { name: "Chelsea", price: 3.80, league: "EPL" },
+  { name: "Brighton", price: 2.65, league: "EPL" },
+  { name: "Napoli", price: 4.10, league: "ITA" },
+  { name: "Dortmund", price: 4.45, league: "BUN" },
+];
+
+/* ═══ NAV ══════════════════════════════════════════════════ */
+function Nav({ active, onChange }) {
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, background: "rgba(0,0,0,0.88)", backdropFilter: "blur(12px)", borderBottom: "1px solid #222", padding: "10px 20px", display: "flex", alignItems: "center", gap: 10, fontFamily: "monospace", fontSize: 11 }}>
+      <span style={{ color: "#444", marginRight: 4 }}>CONCEPTS:</span>
+      {["A · Minimal", "B · Demo", "C · Social", "D · Ad-Safe"].map((l, i) => (
+        <button key={i} onClick={() => onChange(i)} style={{ background: active === i ? LIME : "transparent", color: active === i ? BG : "#888", border: active === i ? "none" : "1px solid #333", padding: "5px 14px", cursor: "pointer", fontFamily: "monospace", fontSize: 10.5, fontWeight: active === i ? 700 : 400 }}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+/* ═══ SHARED: Queue Result ════════════════════════════════ */
+function QueueResult({ team, position }) {
+  const [copied, setCopied] = useState(false);
+  const code = useMemo(() => Math.random().toString(36).slice(2, 8), []);
+  const link = `notch.win/?ref=${code}`;
+  const total = position + Math.floor(Math.random() * 400) + 100;
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", animation: "popIn 0.6s cubic-bezier(0.16,1,0.3,1)" }}>
+      <div style={{ border: `1px solid ${BORDER}`, background: CARD, padding: "28px 24px", marginBottom: 1 }}>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>Your free position</div>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, fontWeight: 700, marginBottom: 4 }}>{team.name}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 12, color: MUTED, marginBottom: 20 }}>$5 long @ ${team.price.toFixed(2)}</div>
+        <div style={{ background: "rgba(178,237,104,0.04)", border: `1px solid rgba(178,237,104,0.1)`, padding: "10px 14px", fontFamily: "monospace", fontSize: 10.5, color: "#666", lineHeight: 1.7 }}>We'll email you when {team.name}'s price moves.</div>
+      </div>
+      <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", background: CARD, padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 4 }}>QUEUE</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 40, fontWeight: 700 }}>#{position.toLocaleString()}</div>
+          </div>
+          <div style={{ fontFamily: "monospace", fontSize: 11, color: MUTED }}>{total.toLocaleString()} total</div>
+        </div>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Skip the line</div>
+        <div style={{ display: "flex", gap: 0, marginBottom: 14 }}>
+          <div style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRight: "none", padding: "9px 12px", fontFamily: "monospace", fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link}</div>
+          <button onClick={() => { navigator.clipboard?.writeText(`https://${link}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background: LIME, color: BG, border: "none", padding: "9px 18px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy"}</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+          {[{ n: "3 refs", r: "$10 bonus" }, { n: "5 refs", r: "Early access" }, { n: "10 refs", r: "Founding badge" }].map(x => (
+            <div key={x.n} style={{ padding: "7px 10px", border: `1px solid ${BORDER}`, fontFamily: "monospace", fontSize: 9 }}>
+              <div style={{ color: LIME, marginBottom: 2, fontWeight: 700 }}>{x.n}</div><div style={{ color: MUTED }}>{x.r}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ SHARED: Team Picker ═════════════════════════════════ */
+function TeamPicker({ selected, onSelect }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 1, background: BORDER, border: `1px solid ${BORDER}` }}>
+      {TEAMS.map(t => {
+        const sel = selected?.name === t.name;
+        return (
+          <button key={t.name} onClick={() => onSelect(t)} style={{ background: sel ? "rgba(178,237,104,0.04)" : CARD, border: "none", outline: "none", cursor: "pointer", textAlign: "left", padding: "12px 14px", position: "relative" }}>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 600, color: sel ? "#fff" : "#888", marginBottom: 2 }}>{t.name}</div>
+            <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: sel ? "#fff" : "#666" }}>${t.price.toFixed(2)}</div>
+            {sel && <div style={{ position: "absolute", top: 6, right: 6, width: 14, height: 14, borderRadius: "50%", background: LIME, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: BG, fontSize: 9, fontWeight: 900 }}>✓</span></div>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══ SHARED: Phone Mockup ════════════════════════════════ */
+function PhoneMockup() {
+  const teams = [
+    { name: "FC Barcelona", league: "La Liga", price: "$134.80", delta: "+10.1%", up: true },
+    { name: "Real Madrid", league: "La Liga", price: "$134.80", delta: "+10.1%", up: true },
+    { name: "Liverpool", league: "Premier League", price: "$618.00", delta: "+23.5%", up: true },
+    { name: "PSG", league: "Ligue 1", price: "$354.20", delta: "-10.1%", up: false },
+    { name: "Chelsea", league: "Premier League", price: "$420.25", delta: "+2.5%", up: true },
+    { name: "Man United", league: "Premier League", price: "$1,304.80", delta: "-10.1%", up: false },
+  ];
+
+  return (
+    <div style={{
+      width: 220, background: "#111114", borderRadius: 24,
+      border: "2px solid #2a2a2e", padding: "12px 0",
+      overflow: "hidden", flexShrink: 0, position: "relative",
+      boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+    }}>
+      {/* Status bar */}
+      <div style={{ padding: "4px 16px 10px", display: "flex", justifyContent: "center" }}>
+        <div style={{ width: 50, height: 4, borderRadius: 2, background: "#333" }} />
+      </div>
+      {/* Header */}
+      <div style={{ padding: "0 14px 10px", textAlign: "center" }}>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 600, color: "#fff" }}>All markets</div>
+      </div>
+      {/* Playing today */}
+      <div style={{ padding: "6px 14px 4px" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 8, color: MUTED, marginBottom: 6 }}>Playing today</div>
+        <div style={{ display: "flex", gap: 6, overflow: "hidden" }}>
+          {teams.slice(0, 3).map((t, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 10px", minWidth: 80 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 8, color: t.up ? GREEN : RED, marginBottom: 4 }}>↗ {t.delta}</div>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 8, color: "#aaa", marginBottom: 2 }}>{t.name.split(' ').slice(-1)[0]}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 700, color: "#fff" }}>{t.price}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Team list */}
+      <div style={{ padding: "10px 0 0" }}>
+        {teams.map((t, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: `hsl(${i * 60}, 60%, 40%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700 }}>{t.name[0]}</div>
+              <div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 9, color: "#ccc", fontWeight: 500 }}>{t.name}</div>
+                <div style={{ fontFamily: "monospace", fontSize: 7, color: MUTED }}>{t.league}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 700, color: "#fff" }}>{t.price}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: t.up ? GREEN : RED }}>{t.delta}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Nav bar */}
+      <div style={{ display: "flex", justifyContent: "space-around", padding: "10px 10px 4px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 6 }}>
+        {["Home", "Matches", "Feed", "Profile"].map(x => (
+          <div key={x} style={{ fontFamily: "monospace", fontSize: 7, color: x === "Home" ? LIME : MUTED, textAlign: "center" }}>{x}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ SHARED: Product Section ═════════════════════════════ */
+function ProductSection({ variant }) {
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER}`, padding: "60px 0" }}>
+      {/* Phone + description side by side */}
+      <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", justifyContent: "center", marginBottom: 56 }}>
+        <PhoneMockup />
+        <div style={{ maxWidth: 300 }}>
+          <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 2, marginBottom: 16 }}>THE APP</div>
+          <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, lineHeight: 1.2, marginBottom: 12 }}>
+            {variant === "A" ? "A stock market for football." :
+             variant === "B" ? "Every team has a price. You decide what it's worth." :
+             "Trade the teams you already know."}
+          </h3>
+          <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, color: "#666", lineHeight: 1.7, marginBottom: 20 }}>
+            {variant === "A"
+              ? "Every team in Europe's top 5 leagues has a live price. Buy low, sell high, or hold through the season. Prices move with match results, transfers, injuries, and form."
+              : variant === "B"
+              ? "Arsenal wins — price goes up. Star player gets injured — price drops. You hold through it all or close whenever you want. No expiry date. No settlement."
+              : "98 teams across the Premier League, La Liga, Bundesliga, Serie A, and Ligue 1. Real-time prices powered by our proprietary oracle. Available on web and mobile."}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "monospace", fontSize: 11, color: "#888" }}>
+            {[
+              { icon: "→", text: "Go long or short any team" },
+              { icon: "→", text: "Positions never expire" },
+              { icon: "→", text: "Prices move 24/7 with real events" },
+            ].map(x => (
+              <div key={x.text} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ color: LIME }}>{x.icon}</span> {x.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* What moves price */}
+      <div style={{ maxWidth: 600, margin: "0 auto" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 16, textAlign: "center" }}>WHAT MOVES THE PRICE</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 1, background: BORDER, border: `1px solid ${BORDER}` }}>
+          {[
+            { title: "Match results", ex: "Arsenal 2–0 Wolves", effect: "Price up", color: GREEN },
+            { title: "Transfers", ex: "Sign a new striker", effect: "Price up", color: "#3b82f6" },
+            { title: "Injuries", ex: "Saka out 3 weeks", effect: "Price down", color: RED },
+            { title: "Season form", ex: "5 wins in a row", effect: "Price up", color: "#a855f7" },
+          ].map(x => (
+            <div key={x.title} style={{ background: CARD, padding: "14px 14px" }}>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 600, color: "#ccc", marginBottom: 6 }}>{x.title}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, marginBottom: 4 }}>{x.ex}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: x.color }}>{x.effect}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* How it works — 3 steps */}
+      <div style={{ maxWidth: 600, margin: "48px auto 0" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 16, textAlign: "center" }}>HOW IT WORKS</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: BORDER, border: `1px solid ${BORDER}` }}>
+          {[
+            { step: "01", title: "Pick a team", desc: "Choose from 98 teams across Europe's top 5 leagues." },
+            { step: "02", title: "Buy or sell", desc: "Go long if you believe. Short if you don't. With leverage." },
+            { step: "03", title: "Hold forever", desc: "No expiry. Close when you want — tomorrow or next season." },
+          ].map(s => (
+            <div key={s.step} style={{ background: CARD, padding: "16px 14px" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700, color: LIME, opacity: 0.2, marginBottom: 8 }}>{s.step}</div>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, color: "#ccc", marginBottom: 4 }}>{s.title}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, lineHeight: 1.6 }}>{s.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Not a sportsbook callout */}
+      <div style={{ maxWidth: 600, margin: "32px auto 0", border: `1px solid ${BORDER}`, background: CARD, padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 18, color: LIME, flexShrink: 0, lineHeight: 1 }}>≠</div>
+        <div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 600, color: "#ccc", marginBottom: 4 }}>This is not a sportsbook.</div>
+          <div style={{ fontFamily: "monospace", fontSize: 10.5, color: MUTED, lineHeight: 1.7 }}>
+            Sportsbooks give you a ticket that expires in 90 minutes. Polymarket gives you a contract that expires when the season ends.
+            Notch gives you a position that never expires. You're not betting on matches — you're trading team strength.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ SHARED: Footer ══════════════════════════════════════ */
+function Footer() {
+  return (
+    <div style={{ borderTop: `1px solid ${BORDER}`, padding: "24px", display: "flex", justifyContent: "space-between", fontFamily: "monospace", fontSize: 10, color: "#1a1c21" }}>
+      <span>notch.win</span>
+      <span>Built on Solana · Powered by KOPS AI</span>
+    </div>
+  );
+}
+
+/* ═══ VERSION A — MINIMAL ═════════════════════════════════ */
+function VersionA() {
+  const [step, setStep] = useState("email");
+  const [email, setEmail] = useState("");
+  const [team, setTeam] = useState(null);
+  const [pos, setPos] = useState(0);
+
+  return (
+    <div>
+      {step === "email" && (
+        <>
+          <div style={{ minHeight: "85vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px" }}>
+            <div style={{ maxWidth: 480, margin: "0 auto", width: "100%", animation: "fadeUp 0.5s ease" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 3, marginBottom: 24 }}>notch.win</div>
+              <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(26px, 5vw, 42px)", fontWeight: 700, lineHeight: 1.15, letterSpacing: "-0.03em", marginBottom: 12 }}>
+                Your loyalty lasts a lifetime.<br /><span style={{ color: MUTED }}>Your bet lasts 90 minutes.</span>
+              </h1>
+              <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: "#555", lineHeight: 1.6, marginBottom: 36 }}>
+                Perpetual markets for sports teams. Buy your team. Hold through matches, transfers, seasons. No expiry.
+              </p>
+              <div style={{ display: "flex", gap: 0 }}>
+                <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && email.includes("@") && setStep("pick")}
+                  style={{ flex: 1, background: "transparent", border: `1px solid ${BORDER}`, borderRight: "none", padding: "14px 18px", fontFamily: "monospace", fontSize: 14, color: "#fff" }} />
+                <button onClick={() => email.includes("@") && setStep("pick")} style={{ background: LIME, color: BG, border: "none", padding: "14px 28px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Join waitlist →</button>
+              </div>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: "#333", marginTop: 14 }}>Get a free $5 position in your team · 4,217 people ahead of you</div>
+            </div>
+          </div>
+          {/* Product section below fold */}
+          <div style={{ padding: "0 24px" }}>
+            <div style={{ maxWidth: 650, margin: "0 auto" }}><ProductSection variant="A" /></div>
+          </div>
+        </>
+      )}
+      {step === "pick" && (
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px" }}>
+          <div style={{ maxWidth: 500, margin: "0 auto", width: "100%", animation: "fadeUp 0.4s ease" }}>
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 3, marginBottom: 20 }}>notch.win</div>
+            <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 28, fontWeight: 700, marginBottom: 6 }}>Now pick your team.</h2>
+            <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: "#555", marginBottom: 28, lineHeight: 1.6 }}>Free $5 long position at today's price.</p>
+            <TeamPicker selected={team} onSelect={setTeam} />
+            <button onClick={() => { if (team) { setPos(Math.floor(Math.random() * 3000) + 800); setStep("done"); } }} style={{ marginTop: 20, width: "100%", background: team ? LIME : "#222", color: team ? BG : "#555", border: "none", padding: "14px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 700, cursor: team ? "pointer" : "default" }}>
+              {team ? `Claim $5 of ${team.name} →` : "Select a team"}
+            </button>
+          </div>
+        </div>
+      )}
+      {step === "done" && <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", padding: "0 24px" }}><div style={{ width: "100%" }}><QueueResult team={team} position={pos} /></div></div>}
+      <Footer />
+    </div>
+  );
+}
+
+/* ═══ VERSION B — DEMO FIRST ══════════════════════════════ */
+const EVENTS = [
+  { t: 0, ev: null, p: 4.20 },
+  { t: 2000, ev: "You buy Arsenal", p: 4.20, tag: "OPENED", type: "action" },
+  { t: 4500, ev: "Arsenal 2–0 Wolves", p: 4.52, tag: "MATCH", type: "match" },
+  { t: 7000, ev: "Arsenal sign Zubimendi", p: 4.88, tag: "TRANSFER", type: "transfer" },
+  { t: 9500, ev: "Saka injured — out 3 weeks", p: 4.61, tag: "INJURY", type: "injury" },
+  { t: 12000, ev: "Arsenal 3–1 Chelsea", p: 4.95, tag: "MATCH", type: "match" },
+  { t: 14500, ev: "You're up 17.8%", p: 4.95, type: "result" },
+];
+
+function LiveDemo() {
+  const [step, setStep] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  useEffect(() => {
+    if (step >= EVENTS.length - 1) { const t = setTimeout(() => { setStep(0); setCycle(c => c + 1); }, 3500); return () => clearTimeout(t); }
+    const delay = EVENTS[step + 1].t - EVENTS[step].t;
+    const t = setTimeout(() => setStep(s => s + 1), delay);
+    return () => clearTimeout(t);
+  }, [step, cycle]);
+
+  const cur = EVENTS[step];
+  const pnl = cur.p - 4.20;
+  const pnlPct = ((pnl / 4.20) * 100).toFixed(1);
+  const dotC = { action: LIME, match: "#a855f7", transfer: "#3b82f6", injury: RED, result: LIME };
+
+  return (
+    <div style={{ border: `1px solid ${BORDER}`, background: CARD, maxWidth: 440, width: "100%" }}>
+      <div style={{ padding: "12px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#EF0107" }} />
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 600 }}>Arsenal</span>
+        </div>
+        <span style={{ fontFamily: "monospace", fontSize: 9, color: MUTED, letterSpacing: 1 }}>DEMO</span>
+      </div>
+      <div style={{ padding: "16px 18px 8px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontFamily: "monospace", fontSize: 30, fontWeight: 700, transition: "all 0.4s" }}>${cur.p.toFixed(2)}</span>
+          {step >= 2 && <span style={{ fontFamily: "monospace", fontSize: 13, color: pnl >= 0 ? GREEN : RED }}>{pnl >= 0 ? "+" : ""}{pnlPct}%</span>}
+        </div>
+      </div>
+      <div style={{ borderTop: `1px solid ${BORDER}`, minHeight: 150 }}>
+        {EVENTS.slice(1, step + 1).map((e, i) => (
+          <div key={`${cycle}-${i}`} style={{ padding: "9px 18px", borderBottom: "1px solid rgba(255,255,255,0.02)", display: "flex", justifyContent: "space-between", alignItems: "center", animation: "slideIn 0.3s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: dotC[e.type] || MUTED, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 11.5, color: e.type === "result" ? LIME : "#bbb", fontWeight: e.type === "result" ? 600 : 400 }}>{e.ev}</div>
+                {e.tag && <div style={{ fontFamily: "monospace", fontSize: 8, color: MUTED, letterSpacing: 1, marginTop: 1 }}>{e.tag}</div>}
+              </div>
+            </div>
+            {e.type !== "action" && e.type !== "result" && <span style={{ fontFamily: "monospace", fontSize: 11, color: e.p > (EVENTS[i]?.p || 4.20) ? GREEN : RED }}>${e.p.toFixed(2)}</span>}
+          </div>
+        ))}
+        {step === 0 && <div style={{ padding: "45px 18px", textAlign: "center", fontFamily: "monospace", fontSize: 10, color: "#333", animation: "pulse 2s infinite" }}>Watching...</div>}
+      </div>
+    </div>
+  );
+}
+
+function VersionB() {
+  const [step, setStep] = useState("demo");
+  const [team, setTeam] = useState(null);
+  const [email, setEmail] = useState("");
+  const [pos, setPos] = useState(0);
+  const submit = () => { if (!email.includes("@") || !team) return; setPos(Math.floor(Math.random() * 3000) + 800); setStep("done"); };
+
+  return (
+    <div>
+      {step === "demo" && (
+        <>
+          <div style={{ padding: "30px 24px 0", maxWidth: 650, margin: "0 auto" }}>
+            <div style={{ animation: "fadeUp 0.5s ease" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 3, marginBottom: 28 }}>notch.win</div>
+              <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(24px, 4.5vw, 36px)", fontWeight: 700, lineHeight: 1.15, marginBottom: 12 }}>
+                What if you could own<br /><span style={{ color: MUTED }}>your team's performance?</span>
+              </h1>
+              <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: "#555", lineHeight: 1.6, maxWidth: 380, marginBottom: 28 }}>Not a bet. A position that moves with every match, injury, and transfer. Watch:</p>
+              <div style={{ marginBottom: 24 }}><LiveDemo /></div>
+              <button onClick={() => setStep("pick")} style={{ background: LIME, color: BG, border: "none", padding: "14px 32px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Pick your team — get $5 free →</button>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: "#333", marginTop: 12 }}>4,217 on the waitlist</div>
+            </div>
+          </div>
+          <div style={{ padding: "0 24px" }}><div style={{ maxWidth: 650, margin: "0 auto" }}><ProductSection variant="B" /></div></div>
+        </>
+      )}
+      {step === "pick" && (
+        <div style={{ padding: "30px 24px 120px", maxWidth: 550, margin: "0 auto", animation: "fadeUp 0.4s ease" }}>
+          <button onClick={() => setStep("demo")} style={{ background: "none", border: "none", color: MUTED, fontFamily: "monospace", fontSize: 11, cursor: "pointer", padding: 0, marginBottom: 20 }}>← back</button>
+          <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 700, marginBottom: 6 }}>Pick your team.</h2>
+          <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, color: "#555", marginBottom: 24 }}>Free $5 long position at today's price.</p>
+          <TeamPicker selected={team} onSelect={setTeam} />
+          {team && (
+            <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(8,9,11,0.95)", backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, padding: "12px 24px", zIndex: 50, animation: "fadeUp 0.3s ease" }}>
+              <div style={{ maxWidth: 550, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{team.name} · ${team.price.toFixed(2)}</span>
+                <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 0, background: "transparent", border: `1px solid ${BORDER}`, padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "#fff" }} />
+                <button onClick={submit} style={{ background: LIME, color: BG, border: "none", padding: "10px 22px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Claim →</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {step === "done" && <div style={{ padding: "50px 24px 60px" }}><QueueResult team={team} position={pos} /></div>}
+      <Footer />
+    </div>
+  );
+}
+
+/* ═══ VERSION C — SOCIAL PROOF ════════════════════════════ */
+function VersionC() {
+  const [step, setStep] = useState("main");
+  const [team, setTeam] = useState(null);
+  const [email, setEmail] = useState("");
+  const [pos, setPos] = useState(0);
+  const submit = () => { if (!email.includes("@") || !team) return; setPos(Math.floor(Math.random() * 3000) + 800); setStep("done"); };
+
+  return (
+    <div>
+      {step === "main" && (
+        <>
+          <div style={{ padding: "30px 24px 0", maxWidth: 650, margin: "0 auto", animation: "fadeUp 0.5s ease" }}>
+            {/* Live counter bar */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", border: `1px solid ${BORDER}`, background: CARD, marginBottom: 28, fontFamily: "monospace", fontSize: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 5, height: 5, borderRadius: "50%", background: LIME, animation: "pulse 2s infinite" }} />
+                <span style={{ color: "#888" }}>4,217 people joined the waitlist</span>
+              </div>
+              <span style={{ color: MUTED }}>98 teams live</span>
+            </div>
+
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 3, marginBottom: 24 }}>notch.win</div>
+            <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(24px, 4.5vw, 36px)", fontWeight: 700, lineHeight: 1.15, marginBottom: 10 }}>
+              Buy your team.<br /><span style={{ color: MUTED }}>Hold it forever.</span>
+            </h1>
+            <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: "#555", lineHeight: 1.6, maxWidth: 380, marginBottom: 28 }}>
+              Each team has a live price. It moves with match results, injuries, and transfers.
+              Pick a team below — get a <span style={{ color: LIME }}>free $5 position</span> when we launch.
+            </p>
+
+            <TeamPicker selected={team} onSelect={setTeam} />
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: "#262830", marginTop: 10, textAlign: "center" }}>EPL · La Liga · Bundesliga · Serie A · Ligue 1</div>
+
+            {team && (
+              <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(8,9,11,0.95)", backdropFilter: "blur(16px)", borderTop: `1px solid ${BORDER}`, padding: "12px 24px", zIndex: 50, animation: "fadeUp 0.3s ease" }}>
+                <div style={{ maxWidth: 650, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{team.name} · ${team.price.toFixed(2)}</span>
+                  <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 0, background: "transparent", border: `1px solid ${BORDER}`, padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "#fff" }} />
+                  <button onClick={submit} style={{ background: LIME, color: BG, border: "none", padding: "10px 22px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Claim $5 free →</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "0 24px" }}><div style={{ maxWidth: 650, margin: "0 auto" }}><ProductSection variant="C" /></div></div>
+        </>
+      )}
+      {step === "done" && <div style={{ padding: "50px 24px 60px" }}><QueueResult team={team} position={pos} /></div>}
+      <Footer />
+    </div>
+  );
+}
+
+/* ═══ VERSION D — AD-SAFE ═════════════════════════════════ */
+/* No: crypto, Solana, leverage, long/short, dollar prices,
+   free position, derivatives language, perpetual */
+function VersionD() {
+  const [step, setStep] = useState("main");
+  const [email, setEmail] = useState("");
+  const [pos, setPos] = useState(0);
+
+  const submit = () => {
+    if (!email.includes("@")) return;
+    setPos(Math.floor(Math.random() * 3000) + 800);
+    setStep("done");
+  };
+
+  const total = pos + Math.floor(Math.random() * 400) + 100;
+  const [copied, setCopied] = useState(false);
+  const code = useMemo(() => Math.random().toString(36).slice(2, 8), []);
+  const link = `notch.win/?ref=${code}`;
+
+  return (
+    <div>
+      {step === "main" && (
+        <>
+          {/* Hero — centered, emotional, zero financial language */}
+          <div style={{ minHeight: "80vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px" }}>
+            <div style={{ maxWidth: 500, margin: "0 auto", width: "100%", animation: "fadeUp 0.5s ease" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 3, marginBottom: 28 }}>notch.win</div>
+
+              <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(28px, 5.5vw, 46px)", fontWeight: 700, lineHeight: 1.12, letterSpacing: "-0.03em", marginBottom: 16 }}>
+                You've backed your team<br />for years.<br />
+                <span style={{ color: MUTED }}>Now it counts.</span>
+              </h1>
+
+              <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: "#555", lineHeight: 1.65, marginBottom: 36, maxWidth: 400 }}>
+                A new way to back the teams you believe in.
+                Every match, every transfer, every season — your commitment is reflected in real time.
+              </p>
+
+              <div style={{ display: "flex", gap: 0, maxWidth: 440 }}>
+                <input type="email" placeholder="your@email.com" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && submit()}
+                  style={{ flex: 1, background: "transparent", border: `1px solid ${BORDER}`, borderRight: "none", padding: "14px 18px", fontFamily: "monospace", fontSize: 14, color: "#fff" }}
+                />
+                <button onClick={submit} style={{
+                  background: LIME, color: BG, border: "none", padding: "14px 28px",
+                  fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 700,
+                  cursor: "pointer", whiteSpace: "nowrap",
+                }}>
+                  Get early access →
+                </button>
+              </div>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: "#333", marginTop: 14 }}>
+                Join 4,000+ fans on the waitlist · launching soon
+              </div>
+            </div>
+          </div>
+
+          {/* What is Notch — plain language, no financial terms */}
+          <div style={{ padding: "0 24px" }}>
+            <div style={{ maxWidth: 600, margin: "0 auto", borderTop: `1px solid ${BORDER}`, padding: "60px 0" }}>
+
+              {/* Phone + description */}
+              <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", justifyContent: "center", marginBottom: 56 }}>
+                <PhoneMockupSafe />
+                <div style={{ maxWidth: 280 }}>
+                  <div style={{ fontFamily: "monospace", fontSize: 10, color: LIME, letterSpacing: 2, marginBottom: 16 }}>THE APP</div>
+                  <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 20, fontWeight: 700, lineHeight: 1.2, marginBottom: 12 }}>
+                    Every team has a score.<br />It changes every day.
+                  </h3>
+                  <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, color: "#666", lineHeight: 1.7, marginBottom: 20 }}>
+                    Follow the teams you care about. See how match results, transfers, and injuries
+                    change their rating in real time. Back the ones you believe in.
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "monospace", fontSize: 11, color: "#888" }}>
+                    {[
+                      "98 teams across Europe's top 5 leagues",
+                      "Updated in real time with every match",
+                      "Track transfers, injuries, and form",
+                    ].map(x => (
+                      <div key={x} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ color: LIME }}>→</span> {x}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* What changes the score */}
+              <div style={{ maxWidth: 560, margin: "0 auto" }}>
+                <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 16, textAlign: "center" }}>WHAT CHANGES THE SCORE</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 1, background: BORDER, border: `1px solid ${BORDER}` }}>
+                  {[
+                    { title: "Match results", ex: "Arsenal beats Wolves", effect: "Score rises" },
+                    { title: "Transfers", ex: "New signing announced", effect: "Score adjusts" },
+                    { title: "Injuries", ex: "Key player ruled out", effect: "Score drops" },
+                    { title: "Season form", ex: "5 match win streak", effect: "Score climbs" },
+                  ].map(x => (
+                    <div key={x.title} style={{ background: CARD, padding: "14px" }}>
+                      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 600, color: "#ccc", marginBottom: 6 }}>{x.title}</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, marginBottom: 3 }}>{x.ex}</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 10, color: "#888" }}>{x.effect}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* How it works — no financial language */}
+              <div style={{ maxWidth: 560, margin: "48px auto 0" }}>
+                <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 16, textAlign: "center" }}>HOW IT WORKS</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: BORDER, border: `1px solid ${BORDER}` }}>
+                  {[
+                    { step: "01", title: "Pick your team", desc: "Choose from 98 teams across the Premier League, La Liga, Bundesliga, Serie A, and Ligue 1." },
+                    { step: "02", title: "Follow the score", desc: "Your team's rating moves with every match, transfer, and injury. All in real time." },
+                    { step: "03", title: "Back your belief", desc: "Think your team is underrated? Now there's a way to put your conviction on the line." },
+                  ].map(s => (
+                    <div key={s.step} style={{ background: CARD, padding: "16px 14px" }}>
+                      <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700, color: LIME, opacity: 0.2, marginBottom: 8 }}>{s.step}</div>
+                      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, color: "#ccc", marginBottom: 4 }}>{s.title}</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, lineHeight: 1.6 }}>{s.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Different from betting — softened */}
+              <div style={{ maxWidth: 560, margin: "32px auto 0", border: `1px solid ${BORDER}`, background: CARD, padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
+                <div style={{ fontFamily: "monospace", fontSize: 18, color: LIME, flexShrink: 0, lineHeight: 1 }}>≠</div>
+                <div>
+                  <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 600, color: "#ccc", marginBottom: 4 }}>Not a sportsbook. Not fantasy.</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 10.5, color: MUTED, lineHeight: 1.7 }}>
+                    Sportsbooks end when the match ends. Fantasy leagues end when the season ends.
+                    Notch is continuous — your team's score keeps going through matches, windows, and seasons.
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom CTA */}
+              <div style={{ textAlign: "center", marginTop: 56 }}>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(20px, 3.5vw, 30px)", fontWeight: 700, marginBottom: 6 }}>
+                  Something new is coming.
+                </div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(20px, 3.5vw, 30px)", fontWeight: 700, color: MUTED, marginBottom: 28 }}>
+                  Be first.
+                </div>
+                <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} style={{
+                  background: "transparent", border: `1px solid ${LIME}`, color: LIME,
+                  padding: "12px 36px", fontFamily: "'Space Grotesk', sans-serif",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}>
+                  Join the waitlist ↑
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {step === "done" && (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", padding: "0 24px" }}>
+          <div style={{ maxWidth: 480, margin: "0 auto", width: "100%", animation: "popIn 0.6s cubic-bezier(0.16,1,0.3,1)" }}>
+            <div style={{ border: `1px solid ${BORDER}`, background: CARD, padding: "28px 24px", marginBottom: 1 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: 2, marginBottom: 16 }}>You're in</div>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 24, fontWeight: 700, marginBottom: 6 }}>Welcome to the waitlist.</div>
+              <div style={{ fontFamily: "monospace", fontSize: 12, color: MUTED, lineHeight: 1.7 }}>We'll let you know as soon as notch.win is ready. Early access goes to the top of the list.</div>
+            </div>
+            <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", background: CARD, padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontFamily: "monospace", fontSize: 10, color: MUTED, letterSpacing: 2, marginBottom: 4 }}>YOUR SPOT</div>
+                  <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 40, fontWeight: 700 }}>#{pos.toLocaleString()}</div>
+                </div>
+                <div style={{ fontFamily: "monospace", fontSize: 11, color: MUTED }}>{total.toLocaleString()} total</div>
+              </div>
+              <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Move up the list</div>
+              <div style={{ fontFamily: "monospace", fontSize: 10.5, color: MUTED, marginBottom: 16, lineHeight: 1.6 }}>Share with friends. Each one who joins moves you closer to early access.</div>
+              <div style={{ display: "flex", gap: 0, marginBottom: 14 }}>
+                <div style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRight: "none", padding: "9px 12px", fontFamily: "monospace", fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link}</div>
+                <button onClick={() => { navigator.clipboard?.writeText(`https://${link}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background: LIME, color: BG, border: "none", padding: "9px 18px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{copied ? "Copied ✓" : "Copy"}</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                {[{ n: "3 friends", r: "Priority access" }, { n: "10 friends", r: "Founding member" }].map(x => (
+                  <div key={x.n} style={{ padding: "7px 10px", border: `1px solid ${BORDER}`, fontFamily: "monospace", fontSize: 9 }}>
+                    <div style={{ color: LIME, marginBottom: 2, fontWeight: 700 }}>{x.n}</div><div style={{ color: MUTED }}>{x.r}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Footer />
+    </div>
+  );
+}
+
+/* Phone mockup for D — no dollar signs, uses "rating" instead of "price" */
+function PhoneMockupSafe() {
+  const teams = [
+    { name: "FC Barcelona", league: "La Liga", rating: "92.4", delta: "+3.1", up: true },
+    { name: "Real Madrid", league: "La Liga", rating: "91.8", delta: "+2.4", up: true },
+    { name: "Liverpool", league: "Premier League", rating: "89.5", delta: "+5.2", up: true },
+    { name: "PSG", league: "Ligue 1", rating: "85.3", delta: "-1.8", up: false },
+    { name: "Chelsea", league: "Premier League", rating: "82.1", delta: "+1.4", up: true },
+    { name: "Man United", league: "Premier League", rating: "78.6", delta: "-3.2", up: false },
+  ];
+  return (
+    <div style={{ width: 210, background: "#111114", borderRadius: 24, border: "2px solid #2a2a2e", padding: "12px 0", overflow: "hidden", flexShrink: 0, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+      <div style={{ padding: "4px 16px 10px", display: "flex", justifyContent: "center" }}>
+        <div style={{ width: 50, height: 4, borderRadius: 2, background: "#333" }} />
+      </div>
+      <div style={{ padding: "0 14px 8px", textAlign: "center" }}>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, fontWeight: 600, color: "#fff" }}>Team Ratings</div>
+      </div>
+      <div style={{ padding: "4px 14px 2px" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 8, color: MUTED, marginBottom: 6 }}>Trending this week</div>
+      </div>
+      <div>
+        {teams.map((t, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: `hsl(${i * 55}, 50%, 35%)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: "#fff", fontWeight: 700 }}>{t.name[0]}</div>
+              <div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 9, color: "#ccc", fontWeight: 500 }}>{t.name}</div>
+                <div style={{ fontFamily: "monospace", fontSize: 7, color: MUTED }}>{t.league}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "#fff" }}>{t.rating}</div>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: t.up ? GREEN : RED }}>{t.delta}%</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-around", padding: "10px 10px 4px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4 }}>
+        {["Home", "Matches", "Feed", "Profile"].map(x => (
+          <div key={x} style={{ fontFamily: "monospace", fontSize: 7, color: x === "Home" ? LIME : MUTED }}>{x}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ MAIN ════════════════════════════════════════════════ */
+function App() {
+  const [v, setV] = useState(0);
+  const [k, setK] = useState(0);
+  const sw = (i) => { setV(i); setK(k => k + 1); window.scrollTo(0, 0); };
+
+  return (
+    <div style={{ background: BG, minHeight: "100vh", color: "#fff" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        ::selection { background: ${LIME}; color: ${BG}; }
+        input::placeholder { color: #2a2c30; }
+        input:focus { outline: none; border-color: #444 !important; }
+        button:hover { opacity: 0.85; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes popIn { from { opacity: 0; transform: translateY(20px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+      `}</style>
+      <Nav active={v} onChange={sw} />
+      <div style={{ paddingTop: 52 }} key={k}>
+        {v === 0 && <VersionA />}
+        {v === 1 && <VersionB />}
+        {v === 2 && <VersionC />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
