@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Group Chat Animation</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0c10; overflow: hidden; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; font-family: 'Space Grotesk', sans-serif; }
+  canvas { display: block; }
+  #watchAgain {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    background: #b2ed68; color: #0a0c10; border: none; padding: 14px 36px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px;
+    border-radius: 50px; cursor: pointer; opacity: 0; pointer-events: none;
+    transition: opacity 0.4s, transform 0.3s;
+    z-index: 10;
+  }
+  #watchAgain:hover { transform: translateX(-50%) scale(1.05); }
+  #watchAgain.visible { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain" onclick="restart()">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const watchBtn = document.getElementById('watchAgain');
+
+// --- CONSTANTS ---
+const BG = '#0a0c10';
+const LIME = '#b2ed68';
+const RED = '#ff4d4d';
+const CYAN = '#22d3ee';
+const GOLD = '#fbbf24';
+const WHITE = '#ffffff';
+const DARK_CARD = '#141720';
+const DARKER = '#0d0f14';
+const MID_GRAY = '#1c2030';
+const LIGHT_GRAY = '#8892a8';
+const TOTAL_DURATION = 31;
+
+// Avatar colors
+const AVATAR_COLORS = {
+  Jake: '#3b82f6', Tom: '#ef4444', Alex: '#f59e0b', Sam: '#10b981', Mike: '#8b5cf6', You: CYAN
+};
+
+// --- RESPONSIVE ---
+let W, H, SCALE, PHONE_X, PHONE_Y, PHONE_W, PHONE_H;
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  SCALE = Math.min(W / 430, H / 932) * 0.88;
+  PHONE_W = 390 * SCALE;
+  PHONE_H = 844 * SCALE;
+  PHONE_X = (W - PHONE_W) / 2;
+  PHONE_Y = (H - PHONE_H) / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- EASING ---
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+0.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+0.9375;
+  return 7.5625*(t-=2.625/2.75)*t+0.984375;
+}
+function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+// --- PARTICLES / CONFETTI ---
+let particles = [];
+let confetti = [];
+function spawnConfetti(cx, cy, count) {
+  for (let i = 0; i < count; i++) {
+    confetti.push({
+      x: cx, y: cy,
+      vx: (Math.random() - 0.5) * 14 * SCALE,
+      vy: (Math.random() - 1.2) * 12 * SCALE,
+      size: (3 + Math.random() * 5) * SCALE,
+      color: [LIME, GOLD, CYAN, RED, WHITE, '#a78bfa'][Math.floor(Math.random() * 6)],
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      life: 1,
+      decay: 0.008 + Math.random() * 0.008
+    });
+  }
+}
+function updateConfetti() {
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    let c = confetti[i];
+    c.x += c.vx;
+    c.y += c.vy;
+    c.vy += 0.25 * SCALE;
+    c.vx *= 0.99;
+    c.rotation += c.rotSpeed;
+    c.life -= c.decay;
+    if (c.life <= 0) confetti.splice(i, 1);
+  }
+}
+function drawConfetti() {
+  confetti.forEach(c => {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rotation);
+    ctx.globalAlpha = c.life;
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.size/2, -c.size/4, c.size, c.size/2);
+    ctx.restore();
+  });
+}
+
+// Glow particles
+let glowParticles = [];
+function spawnGlow(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    glowParticles.push({
+      x, y, vx: (Math.random()-0.5)*4*SCALE, vy: (Math.random()-0.5)*4*SCALE,
+      radius: (2+Math.random()*4)*SCALE, color, life: 1, decay: 0.015+Math.random()*0.02
+    });
+  }
+}
+function updateGlow() {
+  for (let i = glowParticles.length-1; i >= 0; i--) {
+    let p = glowParticles[i];
+    p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+    if (p.life <= 0) glowParticles.splice(i, 1);
+  }
+}
+function drawGlow() {
+  glowParticles.forEach(p => {
+    ctx.globalAlpha = p.life * 0.6;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// --- DRAWING HELPERS ---
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawAvatar(x, y, r, name, initial) {
+  ctx.fillStyle = AVATAR_COLORS[name] || CYAN;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${r*1.1}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initial || name[0], x, y + 1*SCALE);
+}
+
+function drawPhone(opacity) {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  // Phone shell
+  const shadowSize = 40 * SCALE;
+  ctx.shadowColor = 'rgba(178,237,104,0.08)';
+  ctx.shadowBlur = shadowSize;
+  ctx.fillStyle = '#1a1d28';
+  roundRect(PHONE_X - 6*SCALE, PHONE_Y - 6*SCALE, PHONE_W + 12*SCALE, PHONE_H + 12*SCALE, 44*SCALE);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Phone border
+  ctx.strokeStyle = '#2a2e3e';
+  ctx.lineWidth = 2 * SCALE;
+  roundRect(PHONE_X - 6*SCALE, PHONE_Y - 6*SCALE, PHONE_W + 12*SCALE, PHONE_H + 12*SCALE, 44*SCALE);
+  ctx.stroke();
+
+  // Phone screen
+  ctx.fillStyle = BG;
+  roundRect(PHONE_X, PHONE_Y, PHONE_W, PHONE_H, 38*SCALE);
+  ctx.fill();
+
+  // Clip to phone screen
+  ctx.beginPath();
+  roundRect(PHONE_X, PHONE_Y, PHONE_W, PHONE_H, 38*SCALE);
+  ctx.clip();
+
+  // Notch
+  const notchW = 120 * SCALE;
+  const notchH = 28 * SCALE;
+  ctx.fillStyle = '#000';
+  roundRect(PHONE_X + (PHONE_W - notchW)/2, PHONE_Y, notchW, notchH, 14*SCALE);
+  ctx.fill();
+
+  ctx.restore();
+  return true;
+}
+
+function phoneClip() {
+  ctx.save();
+  ctx.beginPath();
+  roundRect(PHONE_X, PHONE_Y, PHONE_W, PHONE_H, 38*SCALE);
+  ctx.clip();
+}
+
+// --- ANIMATION STATE ---
+let startTime = null;
+let animId = null;
+
+function restart() {
+  watchBtn.classList.remove('visible');
+  confetti = [];
+  glowParticles = [];
+  startTime = null;
+  if (animId) cancelAnimationFrame(animId);
+  animate(performance.now());
+}
+
+// --- CHAT MESSAGES DATA ---
+const messages = [
+  { name: 'Jake', text: 'Arsenal are clear \ud83d\udcc8 +18% this month', pnl: '+18%', pnlColor: LIME, time: 4 },
+  { name: 'Tom', text: 'Bro my Spurs short is printing \ud83d\ude08', pnl: '+22%', pnlColor: LIME, time: 5.5 },
+  { name: 'Alex', text: 'Who told me to long Man United \ud83d\udc80', pnl: '-12%', pnlColor: RED, time: 7 },
+  { name: 'Sam', text: 'Diamond hands Alex \ud83d\ude02\ud83d\ude02', pnl: null, pnlColor: null, time: 8.2 },
+];
+
+const breakingMessages = [
+  { name: 'Alex', text: 'TOLD YOU TO HOLD \ud83d\ude80\ud83d\ude80\ud83d\ude80', pnl: '+8%', pnlColor: LIME, time: 16.5 },
+  { name: 'Jake', text: 'no way lmaooo', pnl: null, pnlColor: null, time: 17.5 },
+];
+
+const finalMessages = [
+  { name: 'Tom', text: 'GG bro \ud83d\udc4f', time: 21.5 },
+  { name: 'Jake', text: 'rematch?? \ud83d\udd25', time: 22.2 },
+  { name: 'Sam', text: 'Season 2 lets goooo', time: 23 },
+];
+
+// Leaderboard data
+const leaderboardInitial = [
+  { name: 'Jake', amount: 34, team: 'ARS', color: '#ef0107' },
+  { name: 'Tom', amount: 28, team: 'TOT', color: '#132257' },
+  { name: 'Sam', amount: 12, team: 'LIV', color: '#c8102e' },
+  { name: 'Mike', amount: 5, team: 'CHE', color: '#034694' },
+  { name: 'You', amount: -3, team: 'MCI', color: '#6cabdd' },
+  { name: 'Alex', amount: -18, team: 'MUN', color: '#da291c' },
+];
+
+const leaderboardAfterTwist = [
+  { name: 'Jake', amount: 34, team: 'ARS', color: '#ef0107' },
+  { name: 'Tom', amount: 28, team: 'TOT', color: '#132257' },
+  { name: 'Sam', amount: 12, team: 'LIV', color: '#c8102e' },
+  { name: 'Alex', amount: 9, team: 'MUN', color: '#da291c' },
+  { name: 'Mike', amount: 5, team: 'CHE', color: '#034694' },
+  { name: 'You', amount: -3, team: 'MCI', color: '#6cabdd' },
+];
+
+const leaderboardFinal = [
+  { name: 'You', amount: 42, team: 'MCI', color: '#6cabdd' },
+  { name: 'Jake', amount: 31, team: 'ARS', color: '#ef0107' },
+  { name: 'Alex', amount: 24, team: 'MUN', color: '#da291c' },
+  { name: 'Tom', amount: 18, team: 'TOT', color: '#132257' },
+  { name: 'Sam', amount: 8, team: 'LIV', color: '#c8102e' },
+  { name: 'Mike', amount: -3, team: 'CHE', color: '#034694' },
+];
+
+// --- DRAW FUNCTIONS ---
+
+function drawHeader(t, scrollY) {
+  const hdrH = 90 * SCALE;
+  const y = PHONE_Y + scrollY;
+
+  // Header background
+  ctx.fillStyle = '#0f1118';
+  ctx.fillRect(PHONE_X, y, PHONE_W, hdrH);
+
+  // Bottom border
+  ctx.fillStyle = '#1c2030';
+  ctx.fillRect(PHONE_X, y + hdrH - 1*SCALE, PHONE_W, 1*SCALE);
+
+  const fadeIn = clamp01(t / 0.5);
+  ctx.globalAlpha = fadeIn;
+
+  // Back arrow
+  ctx.fillStyle = LIME;
+  ctx.font = `600 ${18*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'left';
+  ctx.fillText('\u2039', PHONE_X + 16*SCALE, y + 48*SCALE);
+
+  // Group icon
+  const iconX = PHONE_X + 44*SCALE;
+  const iconY = y + 42*SCALE;
+  const iconR = 18*SCALE;
+  ctx.fillStyle = '#1e2738';
+  ctx.beginPath(); ctx.arc(iconX, iconY, iconR, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${14*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('\ud83c\udfc6', iconX, iconY);
+
+  // Title
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${16*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('THE BOYS \ud83c\udfc6 \u2014 Notch League', PHONE_X + 70*SCALE, y + 36*SCALE);
+
+  // Subtitle
+  ctx.fillStyle = LIGHT_GRAY;
+  ctx.font = `400 ${11*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('6 members \u00b7 Buy-in: $20 each \u00b7 Prize: $120', PHONE_X + 70*SCALE, y + 54*SCALE);
+
+  // Buyin badge
+  const badgeX = PHONE_X + PHONE_W - 60*SCALE;
+  const badgeY = y + 34*SCALE;
+  ctx.fillStyle = 'rgba(178,237,104,0.12)';
+  roundRect(badgeX, badgeY, 46*SCALE, 20*SCALE, 10*SCALE);
+  ctx.fill();
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${10*SCALE}px 'JetBrains Mono'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('$120', badgeX + 23*SCALE, badgeY + 10*SCALE + 1*SCALE);
+
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  return hdrH;
+}
+
+function drawBubble(msg, x, y, progress, isRight) {
+  if (progress <= 0) return 0;
+  const p = easeOutCubic(clamp01(progress));
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  const pad = 12 * SCALE;
+  const avatarR = 16 * SCALE;
+  const maxW = PHONE_W * 0.68;
+  const bubbleX = isRight ? PHONE_X + PHONE_W - 18*SCALE : PHONE_X + 18*SCALE + avatarR*2 + 6*SCALE;
+
+  // Avatar (left side only)
+  if (!isRight) {
+    drawAvatar(PHONE_X + 18*SCALE + avatarR, y + avatarR, avatarR, msg.name, msg.name[0]);
+  }
+
+  // Name
+  ctx.fillStyle = AVATAR_COLORS[msg.name] || CYAN;
+  ctx.font = `600 ${11*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = isRight ? 'right' : 'left';
+  const nameX = isRight ? PHONE_X + PHONE_W - 18*SCALE : bubbleX;
+  ctx.fillText(msg.name, nameX, y + 2*SCALE);
+
+  // Measure text
+  ctx.font = `400 ${13*SCALE}px 'Space Grotesk'`;
+  const textW = Math.min(ctx.measureText(msg.text).width + pad*2, maxW);
+  const bubbleH = 38 * SCALE;
+  const bx = isRight ? PHONE_X + PHONE_W - 18*SCALE - textW : bubbleX;
+  const by = y + 10*SCALE;
+
+  // Scale animation
+  ctx.translate(bx + textW/2, by + bubbleH/2);
+  ctx.scale(p, p);
+  ctx.translate(-(bx + textW/2), -(by + bubbleH/2));
+
+  // Bubble background
+  ctx.fillStyle = isRight ? '#1a3a1a' : MID_GRAY;
+  roundRect(bx, by, textW, bubbleH, 14*SCALE);
+  ctx.fill();
+
+  // Text
+  ctx.fillStyle = WHITE;
+  ctx.font = `400 ${13*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'left';
+  ctx.fillText(msg.text, bx + pad, by + bubbleH/2 + 4*SCALE);
+
+  // PnL badge
+  if (msg.pnl) {
+    const badgeW = 48*SCALE;
+    const badgeH = 20*SCALE;
+    const badgeX = bx + textW + 6*SCALE;
+    const badgeY = by + (bubbleH - badgeH)/2;
+    ctx.fillStyle = msg.pnlColor === LIME ? 'rgba(178,237,104,0.15)' : 'rgba(255,77,77,0.15)';
+    roundRect(badgeX, badgeY, badgeW, badgeH, 10*SCALE);
+    ctx.fill();
+    ctx.fillStyle = msg.pnlColor;
+    ctx.font = `700 ${10*SCALE}px 'JetBrains Mono'`;
+    ctx.textAlign = 'center';
+    ctx.fillText(msg.pnl, badgeX + badgeW/2, badgeY + badgeH/2 + 3*SCALE);
+  }
+
+  ctx.restore();
+  return 56 * SCALE;
+}
+
+function drawLeaderboard(x, y, data, slideProgress, highlightName, showCrown) {
+  const p = easeOutCubic(clamp01(slideProgress));
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  const lbW = PHONE_W - 36*SCALE;
+  const lbX = x + 18*SCALE;
+  const rowH = 38*SCALE;
+  const lbH = rowH * data.length + 50*SCALE;
+
+  // Slide from right
+  const offsetX = (1 - p) * 100 * SCALE;
+  ctx.translate(offsetX, 0);
+
+  // Background
+  ctx.fillStyle = DARK_CARD;
+  roundRect(lbX, y, lbW, lbH, 16*SCALE);
+  ctx.fill();
+  ctx.strokeStyle = '#252a3a';
+  ctx.lineWidth = 1*SCALE;
+  roundRect(lbX, y, lbW, lbH, 16*SCALE);
+  ctx.stroke();
+
+  // Title
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${13*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'left';
+  ctx.fillText('\ud83c\udfc6  League Standings', lbX + 14*SCALE, y + 26*SCALE);
+
+  data.forEach((row, i) => {
+    const ry = y + 42*SCALE + i * rowH;
+    const isHighlight = row.name === highlightName;
+
+    if (isHighlight) {
+      ctx.fillStyle = 'rgba(178,237,104,0.08)';
+      roundRect(lbX + 6*SCALE, ry, lbW - 12*SCALE, rowH - 4*SCALE, 8*SCALE);
+      ctx.fill();
+    }
+
+    // Rank
+    ctx.fillStyle = i === 0 && showCrown ? GOLD : LIGHT_GRAY;
+    ctx.font = `700 ${12*SCALE}px 'JetBrains Mono'`;
+    ctx.textAlign = 'center';
+    ctx.fillText(i === 0 && showCrown ? '\ud83d\udc51' : `#${i+1}`, lbX + 26*SCALE, ry + rowH/2 + 3*SCALE);
+
+    // Team badge
+    ctx.fillStyle = row.color;
+    ctx.beginPath();
+    ctx.arc(lbX + 52*SCALE, ry + rowH/2 - 1*SCALE, 10*SCALE, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = WHITE;
+    ctx.font = `700 ${7*SCALE}px 'JetBrains Mono'`;
+    ctx.fillText(row.team, lbX + 52*SCALE, ry + rowH/2 + 2*SCALE);
+
+    // Name
+    ctx.fillStyle = isHighlight ? LIME : WHITE;
+    ctx.font = `${isHighlight ? '700' : '500'} ${13*SCALE}px 'Space Grotesk'`;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.name, lbX + 70*SCALE, ry + rowH/2 + 4*SCALE);
+
+    // Amount
+    const amtStr = row.amount >= 0 ? `+$${row.amount}` : `-$${Math.abs(row.amount)}`;
+    ctx.fillStyle = row.amount >= 0 ? LIME : RED;
+    ctx.font = `700 ${13*SCALE}px 'JetBrains Mono'`;
+    ctx.textAlign = 'right';
+    ctx.fillText(amtStr, lbX + lbW - 16*SCALE, ry + rowH/2 + 4*SCALE);
+  });
+
+  ctx.restore();
+  return lbH + 12*SCALE;
+}
+
+function drawBreakingNews(t, y) {
+  const p = easeOutElastic(clamp01(t));
+  if (p <= 0) return 0;
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  const bnW = PHONE_W - 36*SCALE;
+  const bnX = PHONE_X + 18*SCALE;
+  const bnH = 60*SCALE;
+
+  ctx.translate(0, (1-p)*20*SCALE);
+
+  // Glow effect
+  ctx.shadowColor = 'rgba(255,77,77,0.3)';
+  ctx.shadowBlur = 20*SCALE;
+
+  // Background
+  ctx.fillStyle = 'rgba(255,77,77,0.1)';
+  roundRect(bnX, y, bnW, bnH, 14*SCALE);
+  ctx.fill();
+  ctx.strokeStyle = RED;
+  ctx.lineWidth = 1.5*SCALE;
+  roundRect(bnX, y, bnW, bnH, 14*SCALE);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Alert icon
+  ctx.fillStyle = RED;
+  ctx.font = `700 ${14*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'left';
+  ctx.fillText('\ud83d\udea8 BREAKING', bnX + 14*SCALE, y + 24*SCALE);
+
+  // News text
+  ctx.fillStyle = WHITE;
+  ctx.font = `600 ${12*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('Rashford \u2192 Barcelona confirmed', bnX + 14*SCALE, y + 44*SCALE);
+
+  // Man Utd price ticker
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${12*SCALE}px 'JetBrains Mono'`;
+  ctx.textAlign = 'right';
+  const ticker = '\u25b2 +27%';
+  ctx.fillText(ticker, bnX + bnW - 14*SCALE, y + 34*SCALE);
+
+  ctx.restore();
+  return bnH + 10*SCALE;
+}
+
+function drawTrophy(cx, cy, size, t) {
+  const p = easeOutElastic(clamp01(t));
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(p, p);
+
+  // Trophy glow
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size*1.5);
+  gradient.addColorStop(0, 'rgba(251,191,36,0.3)');
+  gradient.addColorStop(1, 'rgba(251,191,36,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(0, 0, size*1.5, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.font = `${size*2}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('\ud83c\udfc6', 0, 0);
+
+  ctx.restore();
+}
+
+function drawPrizeSection(x, y, progress) {
+  const p = easeOutCubic(clamp01(progress));
+  if (p <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  const cardW = PHONE_W - 36*SCALE;
+  const cardX = x + 18*SCALE;
+  const cardH = 110*SCALE;
+
+  // Card bg
+  ctx.fillStyle = DARK_CARD;
+  roundRect(cardX, y, cardW, cardH, 16*SCALE);
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 1.5*SCALE;
+  roundRect(cardX, y, cardW, cardH, 16*SCALE);
+  ctx.stroke();
+
+  // Title
+  ctx.fillStyle = GOLD;
+  ctx.font = `700 ${14*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('PRIZE PAYOUT', cardX + cardW/2, y + 26*SCALE);
+
+  // Buy-in
+  ctx.fillStyle = LIGHT_GRAY;
+  ctx.font = `400 ${12*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('Your buy-in', cardX + cardW*0.25, y + 50*SCALE);
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${20*SCALE}px 'JetBrains Mono'`;
+  ctx.fillText('$20', cardX + cardW*0.25, y + 74*SCALE);
+
+  // Arrow
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${18*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('\u2192', cardX + cardW*0.5, y + 68*SCALE);
+
+  // Payout
+  ctx.fillStyle = LIGHT_GRAY;
+  ctx.font = `400 ${12*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('Your payout', cardX + cardW*0.75, y + 50*SCALE);
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${20*SCALE}px 'JetBrains Mono'`;
+  ctx.fillText('$120', cardX + cardW*0.75, y + 74*SCALE);
+
+  // ROI
+  ctx.fillStyle = GOLD;
+  ctx.font = `700 ${12*SCALE}px 'JetBrains Mono'`;
+  ctx.fillText('6x RETURN', cardX + cardW/2, y + 98*SCALE);
+
+  ctx.restore();
+}
+
+function drawProgressBar(t) {
+  const barH = 3 * SCALE;
+  const barY = PHONE_Y + PHONE_H - barH;
+  const progress = t / TOTAL_DURATION;
+
+  ctx.fillStyle = '#1c2030';
+  ctx.fillRect(PHONE_X, barY, PHONE_W, barH);
+  ctx.fillStyle = LIME;
+  ctx.fillRect(PHONE_X, barY, PHONE_W * progress, barH);
+}
+
+function drawCTA(progress) {
+  const p = easeOutCubic(clamp01(progress));
+  if (p <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  const cx = W / 2;
+  const baseY = H / 2;
+
+  // Line 1
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${22*SCALE}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Trade with friends.', cx, baseY - 50*SCALE);
+
+  // Line 2
+  ctx.fillStyle = LIME;
+  ctx.fillText('Talk trash. Win bragging rights.', cx, baseY - 16*SCALE);
+
+  // Line 3
+  ctx.fillStyle = LIGHT_GRAY;
+  ctx.font = `500 ${15*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('Create your league on Notch.', cx, baseY + 22*SCALE);
+
+  // notch.win
+  const btnW = 180*SCALE;
+  const btnH = 50*SCALE;
+  const btnX = cx - btnW/2;
+  const btnY = baseY + 50*SCALE;
+
+  ctx.fillStyle = LIME;
+  roundRect(btnX, btnY, btnW, btnH, 25*SCALE);
+  ctx.fill();
+
+  ctx.fillStyle = '#0a0c10';
+  ctx.font = `700 ${18*SCALE}px 'Space Grotesk'`;
+  ctx.fillText('notch.win', cx, btnY + btnH/2);
+
+  ctx.restore();
+}
+
+// --- MAIN ANIMATION ---
+let confettiFired = false;
+
+function animate(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = (timestamp - startTime) / 1000;
+  const t = Math.min(elapsed, TOTAL_DURATION + 1);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.015)';
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx < W; gx += 40*SCALE) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+  }
+  for (let gy = 0; gy < H; gy += 40*SCALE) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+
+  // --- PHASE LOGIC ---
+  const phoneAppear = clamp01(t / 1.5);
+
+  if (t < 28) {
+    // Draw phone
+    drawPhone(easeOutCubic(phoneAppear));
+
+    if (phoneAppear > 0.3) {
+      phoneClip();
+      const hdrOffset = PHONE_Y;
+
+      // Header
+      const hdrProgress = clamp01((t - 0.5) / 1);
+      drawHeader(hdrProgress, 0);
+
+      let cursorY = hdrOffset + 94*SCALE;
+
+      // Clear phone screen area below header for clean phase transitions
+      ctx.fillStyle = BG;
+      ctx.fillRect(PHONE_X, hdrOffset + 90*SCALE, PHONE_W, PHONE_H - 90*SCALE);
+
+      // Determine current phase
+      const phase = t < 9 ? 1 : t < 14 ? 2 : t < 19 ? 3 : t < 24 ? 4 : 5;
+
+      // --- PHASE 1: Chat messages (0-9s) ---
+      if (phase === 1) {
+        messages.forEach(msg => {
+          const msgP = clamp01((t - msg.time) / 0.5);
+          if (msgP > 0) {
+            cursorY += drawBubble(msg, PHONE_X, cursorY, msgP, false);
+          }
+        });
+      }
+
+      // --- PHASE 2: Chat + Leaderboard (9-14s) ---
+      if (phase === 2) {
+        // Show messages already visible
+        messages.forEach(msg => {
+          cursorY += drawBubble(msg, PHONE_X, cursorY, 1, false);
+        });
+        const lbSlide = clamp01((t - 9) / 0.8);
+        cursorY += 8*SCALE;
+        drawLeaderboard(PHONE_X, cursorY, leaderboardInitial, lbSlide, null, true);
+      }
+
+      // --- PHASE 3: Breaking news + reshuffled leaderboard (14-19s) ---
+      if (phase === 3) {
+        let newsY = cursorY;
+        const newsP = clamp01((t - 14) / 0.6);
+        const newsH = drawBreakingNews(newsP, newsY);
+        newsY += newsH;
+
+        // Messages from phase 3
+        breakingMessages.forEach(msg => {
+          const msgP = clamp01((t - msg.time) / 0.5);
+          if (msgP > 0) {
+            newsY += drawBubble(msg, PHONE_X, newsY, msgP, false);
+          }
+        });
+
+        // Reshuffled leaderboard
+        if (t >= 16) {
+          const lbSlide = clamp01((t - 16) / 0.8);
+          newsY += 8*SCALE;
+          drawLeaderboard(PHONE_X, newsY, leaderboardAfterTwist, lbSlide, 'Alex', true);
+        }
+      }
+
+      // --- PHASE 4: Final standings (19-24s) ---
+      if (phase === 4) {
+        // Countdown
+        if (t < 20.5) {
+          const countdownVal = t < 19.5 ? '3' : t < 20 ? '2' : '1';
+          const countP = easeOutElastic(clamp01(((t - 19) % 0.5) / 0.3));
+          ctx.save();
+          ctx.globalAlpha = countP;
+          ctx.fillStyle = GOLD;
+          ctx.font = `700 ${60*SCALE}px 'JetBrains Mono'`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(countdownVal, PHONE_X + PHONE_W/2, PHONE_Y + PHONE_H/2);
+          ctx.restore();
+        }
+
+        // Final leaderboard
+        if (t >= 20.5) {
+          const lbSlide = clamp01((t - 20.5) / 0.8);
+          let finalY = hdrOffset + 94*SCALE;
+
+          // "YOU WON!" banner
+          const bannerP = easeOutElastic(clamp01((t - 20.8) / 0.6));
+          ctx.save();
+          ctx.globalAlpha = bannerP;
+          ctx.fillStyle = LIME;
+          ctx.font = `700 ${20*SCALE}px 'Space Grotesk'`;
+          ctx.textAlign = 'center';
+          ctx.fillText('\ud83c\udf89  YOU WON THE LEAGUE!  \ud83c\udf89', PHONE_X + PHONE_W/2, finalY + 16*SCALE);
+          ctx.restore();
+          finalY += 40*SCALE;
+
+          // Trophy
+          if (t >= 21) {
+            drawTrophy(PHONE_X + PHONE_W/2, finalY + 30*SCALE, 24*SCALE, (t - 21) / 0.6);
+            finalY += 70*SCALE;
+          }
+
+          drawLeaderboard(PHONE_X, finalY, leaderboardFinal, lbSlide, 'You', true);
+          finalY += 290*SCALE;
+
+          // Reaction messages
+          finalMessages.forEach(msg => {
+            const msgP = clamp01((t - msg.time) / 0.4);
+            if (msgP > 0) {
+              finalY += drawBubble(msg, PHONE_X, finalY, msgP, false);
+            }
+          });
+
+          // Confetti
+          if (t >= 21 && !confettiFired) {
+            confettiFired = true;
+            spawnConfetti(PHONE_X + PHONE_W/2, PHONE_Y + PHONE_H * 0.3, 120);
+            spawnGlow(PHONE_X + PHONE_W/2, PHONE_Y + PHONE_H * 0.3, GOLD, 30);
+          }
+        }
+      }
+
+      // --- PHASE 5: Prize section (24-28s) ---
+      if (phase === 5) {
+        let prizeY = hdrOffset + 100*SCALE;
+        const prizeP = clamp01((t - 24) / 0.8);
+
+        // "Season Complete"
+        ctx.save();
+        ctx.globalAlpha = easeOutCubic(prizeP);
+        ctx.fillStyle = GOLD;
+        ctx.font = `700 ${16*SCALE}px 'Space Grotesk'`;
+        ctx.textAlign = 'center';
+        ctx.fillText('SEASON COMPLETE', PHONE_X + PHONE_W/2, prizeY);
+        ctx.restore();
+        prizeY += 30*SCALE;
+
+        drawTrophy(PHONE_X + PHONE_W/2, prizeY + 24*SCALE, 28*SCALE, clamp01((t - 24.2) / 0.5));
+        prizeY += 70*SCALE;
+
+        drawPrizeSection(PHONE_X, prizeY, clamp01((t - 24.5) / 0.8));
+        prizeY += 130*SCALE;
+
+        // Mini final standings
+        if (t >= 25) {
+          drawLeaderboard(PHONE_X, prizeY, leaderboardFinal, clamp01((t - 25) / 0.6), 'You', true);
+        }
+      }
+
+      // Progress bar
+      drawProgressBar(t);
+
+      ctx.restore(); // phoneClip
+    }
+  }
+
+  // --- PHASE 7: CTA (28-32s) ---
+  if (t >= 28) {
+    const ctaP = clamp01((t - 28) / 1.2);
+    drawCTA(ctaP);
+
+    if (t >= 29.5 && confetti.length < 40) {
+      spawnConfetti(W/2, H*0.3, 3);
+    }
+  }
+
+  // Update & draw particles
+  updateConfetti();
+  drawConfetti();
+  updateGlow();
+  drawGlow();
+
+  // Watch again button
+  if (t >= 30) {
+    watchBtn.classList.add('visible');
+  }
+
+  if (t < TOTAL_DURATION + 1) {
+    animId = requestAnimationFrame(animate);
+  }
+}
+
+// Start
+animate(performance.now());
+</script>
+</body>
+</html>

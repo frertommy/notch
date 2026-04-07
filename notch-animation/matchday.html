@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Match Day Pulse</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0c10; overflow: hidden; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+  canvas { display: block; }
+  #watchAgain {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: #b2ed68; color: #0a0c10; border: none; padding: 14px 36px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px;
+    border-radius: 8px; cursor: pointer; opacity: 0; pointer-events: none;
+    transition: opacity 0.4s, transform 0.2s; z-index: 10;
+  }
+  #watchAgain:hover { transform: translateX(-50%) scale(1.05); }
+  #watchAgain.visible { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain" onclick="restart()">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const btn = document.getElementById('watchAgain');
+
+// Colors
+const BG = '#0a0c10';
+const ARSENAL = '#EF0107';
+const CHELSEA = '#034694';
+const LIME = '#b2ed68';
+const RED = '#ff4d4d';
+const WHITE = '#ffffff';
+const DIM = '#6b7280';
+const CARD_BG = '#12151c';
+const CARD_BORDER = '#1e2230';
+
+// Timing (ms)
+const PHASE_DUR = 4000;
+const TOTAL = 32000;
+
+// State
+let W, H, scale, startTime, animFrame;
+let particles = [];
+let confetti = [];
+let shakeX = 0, shakeY = 0, shakeDecay = 0;
+let chartPoints = [];
+let phase = -1;
+
+// Price data keyed by time
+const priceTimeline = [
+  { t: 0, p: 618 },
+  { t: 4000, p: 618 },
+  { t: 5500, p: 634 },
+  { t: 8000, p: 634 },
+  { t: 9500, p: 630 },
+  { t: 12000, p: 630 },
+  { t: 13500, p: 652 },
+  { t: 16000, p: 652 },
+  { t: 17500, p: 642 },
+  { t: 20000, p: 642 },
+  { t: 22000, p: 648 },
+  { t: 32000, p: 648 },
+];
+
+function getPrice(t) {
+  for (let i = priceTimeline.length - 1; i >= 0; i--) {
+    if (t >= priceTimeline[i].t) {
+      if (i === priceTimeline.length - 1) return priceTimeline[i].p;
+      const a = priceTimeline[i], b = priceTimeline[i + 1];
+      const frac = Math.min(1, (t - a.t) / (b.t - a.t));
+      const eased = 1 - Math.pow(1 - frac, 3);
+      return a.p + (b.p - a.p) * eased;
+    }
+  }
+  return 618;
+}
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  scale = Math.min(W / 1080, H / 1920) * (W > H ? Math.min(W / 1080, H / 600) : 1);
+  if (W > H) scale = Math.min(W / 1200, H / 700);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Easing
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+.9375;
+  return 7.5625*(t-=2.625/2.75)*t+.984375;
+}
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+// Particles
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 6;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.01 + Math.random() * 0.02,
+      size: 2 + Math.random() * 4,
+      color,
+    });
+  }
+}
+
+function spawnConfetti(x, y, count) {
+  const colors = [ARSENAL, LIME, '#ffd700', WHITE, '#ff6b9d'];
+  for (let i = 0; i < count; i++) {
+    confetti.push({
+      x: x + (Math.random() - 0.5) * 200,
+      y: y - Math.random() * 100,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -4 - Math.random() * 6,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      w: 4 + Math.random() * 6,
+      h: 8 + Math.random() * 10,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1,
+      decay: 0.005 + Math.random() * 0.008,
+      gravity: 0.15,
+    });
+  }
+}
+
+function triggerShake(intensity) {
+  shakeDecay = intensity;
+}
+
+function updateParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1;
+    p.life -= p.decay;
+    return p.life > 0;
+  });
+  confetti = confetti.filter(c => {
+    c.x += c.vx;
+    c.vy += c.gravity;
+    c.y += c.vy;
+    c.rotation += c.rotSpeed;
+    c.vx *= 0.99;
+    c.life -= c.decay;
+    return c.life > 0;
+  });
+  if (shakeDecay > 0.1) {
+    shakeX = (Math.random() - 0.5) * shakeDecay;
+    shakeY = (Math.random() - 0.5) * shakeDecay;
+    shakeDecay *= 0.9;
+  } else {
+    shakeX = shakeY = 0;
+    shakeDecay = 0;
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  confetti.forEach(c => {
+    ctx.globalAlpha = c.life;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rotation);
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+    ctx.restore();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// Drawing helpers
+function s(v) { return v * scale; }
+
+function drawRoundedRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function setFont(size, weight, family) {
+  ctx.font = `${weight || '400'} ${s(size)}px '${family || 'Space Grotesk'}', sans-serif`;
+}
+
+function drawGlow(x, y, radius, color) {
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color + '40');
+  grad.addColorStop(0.5, color + '15');
+  grad.addColorStop(1, color + '00');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+}
+
+// Build chart data up to a given time
+function buildChart(elapsed, cx, cy, cw, ch) {
+  const points = [];
+  const step = 300;
+  const maxT = Math.min(elapsed, 24000);
+  for (let t = 0; t <= maxT; t += step) {
+    const price = getPrice(t);
+    const x = cx + (t / 24000) * cw;
+    const minP = 610, maxP = 660;
+    const y = cy + ch - ((price - minP) / (maxP - minP)) * ch;
+    points.push({ x, y, t, price });
+  }
+  return points;
+}
+
+function drawChart(elapsed, cx, cy, cw, ch) {
+  const points = buildChart(elapsed, cx, cy, cw, ch);
+  if (points.length < 2) return;
+
+  // Grid lines
+  ctx.strokeStyle = '#1e223040';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = cy + (ch / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(cx, y);
+    ctx.lineTo(cx + cw, y);
+    ctx.stroke();
+  }
+
+  // Price labels
+  setFont(9, '400', 'JetBrains Mono');
+  ctx.fillStyle = DIM;
+  const labels = [660, 648, 635, 622, 610];
+  for (let i = 0; i < labels.length; i++) {
+    ctx.fillText('$' + labels[i], cx - s(38), cy + (ch / 4) * i + s(3));
+  }
+
+  // Line gradient
+  const lastPoint = points[points.length - 1];
+  const lineColor = lastPoint.price >= 618 ? LIME : RED;
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, cy + ch);
+  points.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(lastPoint.x, cy + ch);
+  ctx.closePath();
+  const areaGrad = ctx.createLinearGradient(0, cy, 0, cy + ch);
+  areaGrad.addColorStop(0, lineColor + '30');
+  areaGrad.addColorStop(1, lineColor + '00');
+  ctx.fillStyle = areaGrad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = s(2.5);
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Glow dot at end
+  drawGlow(lastPoint.x, lastPoint.y, s(20), lineColor);
+  ctx.fillStyle = lineColor;
+  ctx.beginPath();
+  ctx.arc(lastPoint.x, lastPoint.y, s(4), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = WHITE;
+  ctx.beginPath();
+  ctx.arc(lastPoint.x, lastPoint.y, s(1.5), 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Event labels on chart
+function drawChartLabels(elapsed, cx, cy, cw, ch) {
+  const events = [
+    { t: 5500, label: "23' GOAL", color: LIME },
+    { t: 9500, label: "38' YC", color: '#ffd700' },
+    { t: 13500, label: "52' GOAL", color: LIME },
+    { t: 17500, label: "71' GOAL", color: RED },
+    { t: 22000, label: "FT", color: WHITE },
+  ];
+  events.forEach(ev => {
+    if (elapsed < ev.t + 500) return;
+    const x = cx + (ev.t / 24000) * cw;
+    const price = getPrice(ev.t);
+    const minP = 610, maxP = 660;
+    const y = cy + ch - ((price - minP) / (maxP - minP)) * ch;
+    const alpha = Math.min(1, (elapsed - ev.t - 500) / 800);
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.strokeStyle = ev.color + '60';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, cy - s(5));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    setFont(8, '600', 'JetBrains Mono');
+    ctx.fillStyle = ev.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(ev.label, x, cy - s(8));
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  });
+}
+
+// Live indicator
+function drawLive(x, y, elapsed) {
+  const pulse = 0.5 + 0.5 * Math.sin(elapsed / 300);
+  ctx.fillStyle = `rgba(239,1,7,${0.3 + 0.3 * pulse})`;
+  ctx.beginPath();
+  ctx.arc(x, y, s(6 + pulse * 3), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = ARSENAL;
+  ctx.beginPath();
+  ctx.arc(x, y, s(4), 0, Math.PI * 2);
+  ctx.fill();
+  setFont(11, '700');
+  ctx.fillStyle = WHITE;
+  ctx.fillText('LIVE', x + s(10), y + s(4));
+}
+
+// Progress bar
+function drawProgress(elapsed) {
+  const frac = Math.min(1, elapsed / TOTAL);
+  const barH = s(3);
+  const y = H - barH;
+  ctx.fillStyle = '#1e2230';
+  ctx.fillRect(0, y, W, barH);
+  const grad = ctx.createLinearGradient(0, 0, W * frac, 0);
+  grad.addColorStop(0, LIME);
+  grad.addColorStop(1, '#7acc3a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, y, W * frac, barH);
+}
+
+// Phase triggers
+let triggered = new Set();
+function triggerOnce(key, fn) {
+  if (!triggered.has(key)) {
+    triggered.add(key);
+    fn();
+  }
+}
+
+// Main render
+function render(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = timestamp - startTime;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  updateParticles();
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  const curPhase = Math.floor(elapsed / PHASE_DUR);
+  const phaseT = (elapsed % PHASE_DUR) / PHASE_DUR;
+  const centerX = W / 2;
+  const centerY = H / 2;
+
+  // Layout dimensions
+  const cardW = Math.min(s(500), W * 0.92);
+  const cardH = Math.min(s(380), H * 0.85);
+  const cardX = centerX - cardW / 2;
+  const cardY = centerY - cardH / 2 - s(10);
+
+  // ===================== PHASE 0: Match card appears (0-4s) =====================
+  if (elapsed < 4000) {
+    const intro = easeOutCubic(Math.min(1, elapsed / 1200));
+    ctx.globalAlpha = intro;
+
+    // Card
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    ctx.strokeStyle = CARD_BORDER;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Live indicator
+    drawLive(cardX + s(20), cardY + s(24), elapsed);
+
+    // Match title
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('PREMIER LEAGUE', centerX, cardY + s(55));
+
+    // Team names with colors
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(95));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(93));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(95));
+
+    // Score
+    const scoreAlpha = easeOutCubic(Math.min(1, Math.max(0, (elapsed - 600) / 800)));
+    ctx.globalAlpha = scoreAlpha * intro;
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('0 - 0', centerX, cardY + s(145));
+
+    // Position info
+    ctx.globalAlpha = easeOutCubic(Math.min(1, Math.max(0, (elapsed - 1200) / 800)));
+    drawRoundedRect(cardX + s(20), cardY + s(170), cardW - s(40), s(55), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = LIME + '40';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    setFont(11, '600');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'left';
+    ctx.fillText('YOUR POSITION', cardX + s(35), cardY + s(190));
+    setFont(15, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.fillText('LONG ARS @ $618', cardX + s(35), cardY + s(212));
+    setFont(12, '500', 'JetBrains Mono');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'right';
+    ctx.fillText('5x leverage', cardX + cardW - s(35), cardY + s(192));
+    ctx.fillStyle = LIME + 'cc';
+    ctx.fillText('$50 stake', cardX + cardW - s(35), cardY + s(212));
+
+    // Chart area
+    const chartAlpha = easeOutCubic(Math.min(1, Math.max(0, (elapsed - 2000) / 1000)));
+    ctx.globalAlpha = chartAlpha;
+    const chartX = cardX + s(50);
+    const chartY = cardY + s(245);
+    const chartW = cardW - s(80);
+    const chartH = s(100);
+    drawChart(elapsed, chartX, chartY, chartW, chartH);
+
+    // PnL
+    setFont(12, '600', 'JetBrains Mono');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'left';
+    ctx.fillText('PnL: $0.00 (0.0%)', cardX + s(50), cardY + s(365));
+
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 1: Saka goal (4-8s) =====================
+  else if (elapsed < 8000) {
+    const t = (elapsed - 4000) / 4000;
+
+    triggerOnce('goal1', () => {
+      triggerShake(15);
+      spawnParticles(centerX, centerY - s(30), LIME, 40);
+      spawnParticles(centerX, centerY - s(30), ARSENAL, 25);
+      spawnConfetti(centerX, centerY - s(50), 30);
+    });
+
+    // Card
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    const glowIntensity = Math.max(0, 1 - t * 2);
+    ctx.strokeStyle = `rgba(178,237,104,${0.3 + glowIntensity * 0.5})`;
+    ctx.lineWidth = 1 + glowIntensity * 2;
+    ctx.stroke();
+
+    // Live indicator
+    drawLive(cardX + s(20), cardY + s(24), elapsed);
+
+    // Match minute
+    setFont(12, '600', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'right';
+    ctx.fillText("23'", cardX + cardW - s(20), cardY + s(27));
+
+    // Goal flash
+    const goalFlash = easeOutElastic(Math.min(1, t * 3));
+    const flashAlpha = Math.max(0, 1 - t * 2.5);
+    if (flashAlpha > 0) {
+      ctx.globalAlpha = flashAlpha * 0.15;
+      ctx.fillStyle = LIME;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('PREMIER LEAGUE', centerX, cardY + s(55));
+
+    // Score update
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(85));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(83));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(85));
+
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    const scoreScale = 1 + (easeOutElastic(Math.min(1, t * 4)) - 1) * 0.1;
+    ctx.save();
+    ctx.translate(centerX, cardY + s(130));
+    ctx.scale(scoreScale, scoreScale);
+    ctx.fillText('1 - 0', 0, 0);
+    ctx.restore();
+
+    // Goal event text
+    const eventAlpha = easeOutCubic(Math.min(1, t * 3));
+    ctx.globalAlpha = eventAlpha;
+    setFont(16, '700');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'center';
+    ctx.fillText('GOAL! Saka scores!', centerX, cardY + s(158));
+    ctx.globalAlpha = 1;
+
+    // Position card
+    drawRoundedRect(cardX + s(20), cardY + s(175), cardW - s(40), s(50), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = LIME + '60';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const curPrice = getPrice(elapsed);
+    const pnl = ((curPrice - 618) / 618 * 100);
+    const pnlDollar = ((curPrice - 618) / 618 * 50);
+
+    setFont(13, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'left';
+    ctx.fillText(`$${curPrice.toFixed(0)}`, cardX + s(35), cardY + s(198));
+    setFont(11, '600', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.fillText(`$618 -> $${curPrice.toFixed(0)}`, cardX + s(35), cardY + s(215));
+
+    ctx.textAlign = 'right';
+    setFont(14, '700', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.fillText(`+$${pnlDollar.toFixed(2)} (+${pnl.toFixed(1)}%)`, cardX + cardW - s(35), cardY + s(207));
+
+    // Chart
+    const chartX = cardX + s(50);
+    const chartY2 = cardY + s(240);
+    const chartW = cardW - s(80);
+    const chartH = s(100);
+    drawChart(elapsed, chartX, chartY2, chartW, chartH);
+    drawChartLabels(elapsed, chartX, chartY2, chartW, chartH);
+
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 2: Yellow card (8-12s) =====================
+  else if (elapsed < 12000) {
+    const t = (elapsed - 8000) / 4000;
+
+    triggerOnce('yc', () => {
+      spawnParticles(centerX, centerY - s(20), '#ffd700', 20);
+      triggerShake(6);
+    });
+
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,215,0,${Math.max(0, 0.5 - t)})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    drawLive(cardX + s(20), cardY + s(24), elapsed);
+
+    setFont(12, '600', 'JetBrains Mono');
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'right';
+    ctx.fillText("38'", cardX + cardW - s(20), cardY + s(27));
+
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('PREMIER LEAGUE', centerX, cardY + s(55));
+
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(85));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(83));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(85));
+
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('1 - 0', centerX, cardY + s(130));
+
+    // Yellow card event
+    const evAlpha = easeOutCubic(Math.min(1, t * 3));
+    ctx.globalAlpha = evAlpha;
+    setFont(15, '600');
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('Yellow Card. Arsenal defender.', centerX, cardY + s(158));
+
+    setFont(12, '500');
+    ctx.fillStyle = DIM;
+    ctx.fillText('Market adjusts...', centerX, cardY + s(178));
+    ctx.globalAlpha = 1;
+
+    // Position
+    drawRoundedRect(cardX + s(20), cardY + s(192), cardW - s(40), s(42), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+
+    const curPrice = getPrice(elapsed);
+    const pnl = ((curPrice - 618) / 618 * 100);
+    const pnlDollar = ((curPrice - 618) / 618 * 50);
+
+    setFont(13, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'left';
+    ctx.fillText(`$${curPrice.toFixed(0)}`, cardX + s(35), cardY + s(218));
+    ctx.textAlign = 'right';
+    setFont(13, '700', 'JetBrains Mono');
+    ctx.fillStyle = pnl >= 0 ? LIME : RED;
+    ctx.fillText(`+$${pnlDollar.toFixed(2)} (+${pnl.toFixed(1)}%)`, cardX + cardW - s(35), cardY + s(218));
+
+    // Chart
+    const chartX = cardX + s(50);
+    const chartY2 = cardY + s(248);
+    const chartW = cardW - s(80);
+    const chartH = s(100);
+    drawChart(elapsed, chartX, chartY2, chartW, chartH);
+    drawChartLabels(elapsed, chartX, chartY2, chartW, chartH);
+
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 3: Havertz goal (12-16s) =====================
+  else if (elapsed < 16000) {
+    const t = (elapsed - 12000) / 4000;
+
+    triggerOnce('goal2', () => {
+      triggerShake(22);
+      spawnParticles(centerX, centerY - s(40), LIME, 60);
+      spawnParticles(centerX, centerY - s(40), ARSENAL, 40);
+      spawnConfetti(centerX, centerY - s(60), 50);
+    });
+
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    const glowI = Math.max(0, 1 - t * 2);
+    ctx.strokeStyle = `rgba(178,237,104,${0.4 + glowI * 0.6})`;
+    ctx.lineWidth = 1 + glowI * 3;
+    ctx.stroke();
+
+    drawLive(cardX + s(20), cardY + s(24), elapsed);
+    setFont(12, '600', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'right';
+    ctx.fillText("52'", cardX + cardW - s(20), cardY + s(27));
+
+    // Flash
+    const flashA = Math.max(0, 1 - t * 2);
+    if (flashA > 0) {
+      ctx.globalAlpha = flashA * 0.2;
+      ctx.fillStyle = LIME;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('PREMIER LEAGUE', centerX, cardY + s(55));
+
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(85));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(83));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(85));
+
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    const ss = 1 + (easeOutElastic(Math.min(1, t * 4)) - 1) * 0.12;
+    ctx.save();
+    ctx.translate(centerX, cardY + s(130));
+    ctx.scale(ss, ss);
+    ctx.fillText('2 - 0', 0, 0);
+    ctx.restore();
+
+    const evA = easeOutCubic(Math.min(1, t * 3));
+    ctx.globalAlpha = evA;
+    setFont(16, '700');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'center';
+    ctx.fillText('GOAL! Havertz doubles it!', centerX, cardY + s(158));
+    ctx.globalAlpha = 1;
+
+    drawRoundedRect(cardX + s(20), cardY + s(175), cardW - s(40), s(50), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = LIME + '80';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const curPrice = getPrice(elapsed);
+    const pnl = ((curPrice - 618) / 618 * 100);
+    const pnlDollar = ((curPrice - 618) / 618 * 50);
+
+    setFont(11, '600');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'left';
+    ctx.fillText('POSITION SURGING', cardX + s(35), cardY + s(192));
+    setFont(14, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.fillText(`$${curPrice.toFixed(0)}`, cardX + s(35), cardY + s(213));
+    ctx.textAlign = 'right';
+    setFont(14, '700', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.fillText(`+$${pnlDollar.toFixed(2)} (+${pnl.toFixed(1)}%)`, cardX + cardW - s(35), cardY + s(207));
+
+    const chartX = cardX + s(50);
+    const chartY2 = cardY + s(240);
+    const chartW = cardW - s(80);
+    const chartH = s(100);
+    drawChart(elapsed, chartX, chartY2, chartW, chartH);
+    drawChartLabels(elapsed, chartX, chartY2, chartW, chartH);
+
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 4: Chelsea pull one back (16-20s) =====================
+  else if (elapsed < 20000) {
+    const t = (elapsed - 16000) / 4000;
+
+    triggerOnce('goal3', () => {
+      triggerShake(12);
+      spawnParticles(centerX, centerY - s(30), RED, 40);
+      spawnParticles(centerX, centerY - s(30), CHELSEA, 30);
+    });
+
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    const glowI = Math.max(0, 1 - t * 2);
+    ctx.strokeStyle = `rgba(255,77,77,${0.3 + glowI * 0.4})`;
+    ctx.lineWidth = 1 + glowI * 2;
+    ctx.stroke();
+
+    drawLive(cardX + s(20), cardY + s(24), elapsed);
+    setFont(12, '600', 'JetBrains Mono');
+    ctx.fillStyle = RED;
+    ctx.textAlign = 'right';
+    ctx.fillText("71'", cardX + cardW - s(20), cardY + s(27));
+
+    // Red flash
+    const flashA = Math.max(0, 1 - t * 2.5);
+    if (flashA > 0) {
+      ctx.globalAlpha = flashA * 0.12;
+      ctx.fillStyle = RED;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('PREMIER LEAGUE', centerX, cardY + s(55));
+
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(85));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(83));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(85));
+
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('2 - 1', centerX, cardY + s(130));
+
+    const evA = easeOutCubic(Math.min(1, t * 3));
+    ctx.globalAlpha = evA;
+    setFont(15, '700');
+    ctx.fillStyle = RED;
+    ctx.textAlign = 'center';
+    ctx.fillText('Chelsea pull one back!', centerX, cardY + s(155));
+
+    // Hold or sell
+    const holdAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.3) * 3)));
+    ctx.globalAlpha = holdAlpha;
+    setFont(13, '600');
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('Hold or sell?', centerX, cardY + s(175));
+    ctx.globalAlpha = 1;
+
+    drawRoundedRect(cardX + s(20), cardY + s(190), cardW - s(40), s(42), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = RED + '40';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const curPrice = getPrice(elapsed);
+    const pnl = ((curPrice - 618) / 618 * 100);
+    const pnlDollar = ((curPrice - 618) / 618 * 50);
+
+    setFont(13, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'left';
+    ctx.fillText(`$${curPrice.toFixed(0)}`, cardX + s(35), cardY + s(216));
+    ctx.textAlign = 'right';
+    ctx.fillStyle = pnlDollar >= 0 ? LIME : RED;
+    ctx.fillText(`+$${pnlDollar.toFixed(2)} (+${pnl.toFixed(1)}%)`, cardX + cardW - s(35), cardY + s(216));
+
+    const chartX = cardX + s(50);
+    const chartY2 = cardY + s(248);
+    const chartW = cardW - s(80);
+    const chartH = s(95);
+    drawChart(elapsed, chartX, chartY2, chartW, chartH);
+    drawChartLabels(elapsed, chartX, chartY2, chartW, chartH);
+
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 5: Full time (20-24s) =====================
+  else if (elapsed < 24000) {
+    const t = (elapsed - 20000) / 4000;
+
+    triggerOnce('ft', () => {
+      triggerShake(10);
+      spawnConfetti(centerX, centerY - s(80), 70);
+      spawnParticles(centerX, centerY, LIME, 50);
+    });
+
+    // Card
+    drawRoundedRect(cardX, cardY, cardW, cardH, s(12));
+    ctx.fillStyle = CARD_BG;
+    ctx.fill();
+    ctx.strokeStyle = LIME + '50';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // FT badge
+    const ftAlpha = easeOutBounce(Math.min(1, t * 2.5));
+    ctx.globalAlpha = ftAlpha;
+    setFont(12, '700');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'left';
+    drawRoundedRect(cardX + s(15), cardY + s(14), s(70), s(22), s(4));
+    ctx.fillStyle = LIME;
+    ctx.fill();
+    setFont(11, '700');
+    ctx.fillStyle = '#0a0c10';
+    ctx.fillText("90+3' FT", cardX + s(22), cardY + s(30));
+    ctx.globalAlpha = 1;
+
+    setFont(14, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('FULL TIME', centerX, cardY + s(55));
+
+    setFont(28, '700');
+    ctx.fillStyle = ARSENAL;
+    ctx.textAlign = 'right';
+    ctx.fillText('ARSENAL', centerX - s(30), cardY + s(85));
+    setFont(20, '400');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('vs', centerX, cardY + s(83));
+    setFont(28, '700');
+    ctx.fillStyle = CHELSEA;
+    ctx.textAlign = 'left';
+    ctx.fillText('CHELSEA', centerX + s(30), cardY + s(85));
+
+    setFont(48, '700', 'JetBrains Mono');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('2 - 1', centerX, cardY + s(130));
+
+    // Final PnL card
+    const pnlAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.2) * 2.5)));
+    ctx.globalAlpha = pnlAlpha;
+    drawRoundedRect(cardX + s(15), cardY + s(148), cardW - s(30), s(60), s(8));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = LIME + '50';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    setFont(11, '600');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'left';
+    ctx.fillText('FINAL PnL', cardX + s(30), cardY + s(167));
+
+    setFont(22, '700', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.fillText('+$2.42 (+4.9%)', cardX + s(30), cardY + s(194));
+
+    ctx.textAlign = 'right';
+    setFont(11, '500');
+    ctx.fillStyle = DIM;
+    ctx.fillText('5x leverage on $50 stake', cardX + cardW - s(30), cardY + s(170));
+    setFont(18, '700', 'JetBrains Mono');
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('+24.3% return', cardX + cardW - s(30), cardY + s(194));
+
+    ctx.globalAlpha = 1;
+
+    // Full match chart
+    const chartAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.35) * 2.5)));
+    ctx.globalAlpha = chartAlpha;
+    const chartX = cardX + s(50);
+    const chartY2 = cardY + s(225);
+    const chartW = cardW - s(80);
+    const chartH = s(120);
+    drawChart(24000, chartX, chartY2, chartW, chartH);
+    drawChartLabels(24000, chartX, chartY2, chartW, chartH);
+    ctx.globalAlpha = 1;
+
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 6: Contrast (24-28s) =====================
+  else if (elapsed < 28000) {
+    const t = (elapsed - 24000) / 4000;
+
+    // Two cards side by side
+    const gap = s(16);
+    const halfW = (cardW - gap) / 2;
+    const leftX = cardX;
+    const rightX = cardX + halfW + gap;
+    const cY = centerY - s(120);
+    const cH = s(240);
+
+    // Traditional bet card (left)
+    const leftAlpha = easeOutCubic(Math.min(1, t * 2.5));
+    ctx.globalAlpha = leftAlpha;
+
+    drawRoundedRect(leftX, cY, halfW, cH, s(10));
+    ctx.fillStyle = '#15181f';
+    ctx.fill();
+    ctx.strokeStyle = '#2a2e3a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    setFont(11, '600');
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('TRADITIONAL BET', leftX + halfW / 2, cY + s(30));
+
+    setFont(14, '700');
+    ctx.fillStyle = WHITE;
+    ctx.fillText('Arsenal to win', leftX + halfW / 2, cY + s(55));
+
+    setFont(12, '500', 'JetBrains Mono');
+    ctx.fillStyle = DIM;
+    ctx.fillText('Stake: $50', leftX + halfW / 2, cY + s(78));
+
+    // Payout
+    setFont(28, '700', 'JetBrains Mono');
+    ctx.fillStyle = '#7acc3a';
+    ctx.fillText('Win $105', leftX + halfW / 2, cY + s(120));
+
+    setFont(13, '600');
+    ctx.fillStyle = RED;
+    ctx.fillText('Done.', leftX + halfW / 2, cY + s(145));
+
+    // Dead X
+    const xAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.4) * 3)));
+    ctx.globalAlpha = leftAlpha * xAlpha;
+    ctx.strokeStyle = RED + 'aa';
+    ctx.lineWidth = s(3);
+    ctx.beginPath();
+    ctx.moveTo(leftX + s(25), cY + s(160));
+    ctx.lineTo(leftX + halfW - s(25), cY + cH - s(20));
+    ctx.moveTo(leftX + halfW - s(25), cY + s(160));
+    ctx.lineTo(leftX + s(25), cY + cH - s(20));
+    ctx.stroke();
+
+    setFont(11, '500');
+    ctx.fillStyle = RED;
+    ctx.fillText('Bet expires. No more value.', leftX + halfW / 2, cY + cH - s(10));
+
+    ctx.globalAlpha = 1;
+
+    // Notch card (right)
+    const rightAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.15) * 2)));
+    ctx.globalAlpha = rightAlpha;
+
+    drawRoundedRect(rightX, cY, halfW, cH, s(10));
+    ctx.fillStyle = '#0d1017';
+    ctx.fill();
+    ctx.strokeStyle = LIME + '60';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Glow
+    drawGlow(rightX + halfW / 2, cY + cH / 2, s(120), LIME);
+
+    setFont(11, '700');
+    ctx.fillStyle = LIME;
+    ctx.textAlign = 'center';
+    ctx.fillText('NOTCH', rightX + halfW / 2, cY + s(30));
+
+    setFont(14, '700');
+    ctx.fillStyle = WHITE;
+    ctx.fillText('LONG ARS position', rightX + halfW / 2, cY + s(55));
+
+    setFont(12, '500', 'JetBrains Mono');
+    ctx.fillStyle = DIM;
+    ctx.fillText('Stake: $50 (5x lev)', rightX + halfW / 2, cY + s(78));
+
+    setFont(28, '700', 'JetBrains Mono');
+    ctx.fillStyle = LIME;
+    ctx.fillText('+24.3%', rightX + halfW / 2, cY + s(120));
+
+    setFont(13, '700');
+    ctx.fillStyle = LIME;
+    ctx.fillText('Position still open.', rightX + halfW / 2, cY + s(145));
+
+    // Pulse
+    const pulse = 0.7 + 0.3 * Math.sin(elapsed / 400);
+    ctx.globalAlpha = rightAlpha * pulse;
+    setFont(12, '600');
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('Next match: Wednesday', rightX + halfW / 2, cY + s(175));
+
+    // Mini chart showing continuation
+    ctx.globalAlpha = rightAlpha;
+    const miniY = cY + s(190);
+    const miniH = s(35);
+    const miniW = halfW - s(30);
+    const miniX = rightX + s(15);
+    ctx.strokeStyle = LIME + '60';
+    ctx.lineWidth = s(1.5);
+    ctx.beginPath();
+    for (let i = 0; i <= 30; i++) {
+      const x = miniX + (i / 30) * miniW;
+      const y = miniY + miniH / 2 + Math.sin(i * 0.4 + elapsed * 0.003) * s(8);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Arrow continuing right
+    ctx.fillStyle = LIME;
+    ctx.beginPath();
+    ctx.moveTo(miniX + miniW, miniY + miniH / 2 - s(5));
+    ctx.lineTo(miniX + miniW + s(8), miniY + miniH / 2);
+    ctx.lineTo(miniX + miniW, miniY + miniH / 2 + s(5));
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  // ===================== PHASE 7: Finale CTA (28-32s) =====================
+  else if (elapsed < 32000) {
+    const t = (elapsed - 28000) / 4000;
+
+    triggerOnce('finale', () => {
+      spawnConfetti(centerX, centerY - s(100), 80);
+    });
+
+    // Taglines
+    const lines = [
+      { text: 'Every goal.', delay: 0 },
+      { text: 'Every card.', delay: 0.12 },
+      { text: 'Every moment.', delay: 0.24 },
+    ];
+
+    lines.forEach(line => {
+      const a = easeOutCubic(Math.min(1, Math.max(0, (t - line.delay) * 3)));
+      ctx.globalAlpha = a;
+      setFont(32, '700');
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'center';
+      const idx = lines.indexOf(line);
+      ctx.fillText(line.text, centerX, centerY - s(100) + idx * s(45));
+    });
+
+    // Subtext
+    const subAlpha = easeOutCubic(Math.min(1, Math.max(0, (t - 0.45) * 2.5)));
+    ctx.globalAlpha = subAlpha;
+    setFont(16, '500');
+    ctx.fillStyle = DIM;
+    ctx.fillText('Your position feels it all.', centerX, centerY + s(50));
+
+    // CTA
+    const ctaAlpha = easeOutElastic(Math.min(1, Math.max(0, (t - 0.6) * 2)));
+    ctx.globalAlpha = ctaAlpha;
+
+    // Glow behind CTA
+    drawGlow(centerX, centerY + s(110), s(100), LIME);
+
+    setFont(36, '700');
+    ctx.fillStyle = LIME;
+    ctx.fillText('notch.win', centerX, centerY + s(115));
+
+    // Underline
+    const tw = ctx.measureText('notch.win').width;
+    ctx.strokeStyle = LIME + '80';
+    ctx.lineWidth = s(2);
+    ctx.beginPath();
+    ctx.moveTo(centerX - tw / 2, centerY + s(122));
+    ctx.lineTo(centerX + tw / 2, centerY + s(122));
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+
+    // Show watch again button
+    if (t > 0.7) btn.classList.add('visible');
+  }
+
+  // ===================== After 32s: hold final frame =====================
+  else {
+    const t = 1;
+    ctx.globalAlpha = 1;
+
+    setFont(32, '700');
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('Every goal.', centerX, centerY - s(100));
+    ctx.fillText('Every card.', centerX, centerY - s(55));
+    ctx.fillText('Every moment.', centerX, centerY - s(10));
+
+    setFont(16, '500');
+    ctx.fillStyle = DIM;
+    ctx.fillText('Your position feels it all.', centerX, centerY + s(50));
+
+    drawGlow(centerX, centerY + s(110), s(100), LIME);
+    setFont(36, '700');
+    ctx.fillStyle = LIME;
+    ctx.fillText('notch.win', centerX, centerY + s(115));
+    const tw = ctx.measureText('notch.win').width;
+    ctx.strokeStyle = LIME + '80';
+    ctx.lineWidth = s(2);
+    ctx.beginPath();
+    ctx.moveTo(centerX - tw / 2, centerY + s(122));
+    ctx.lineTo(centerX + tw / 2, centerY + s(122));
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    btn.classList.add('visible');
+  }
+
+  ctx.restore();
+  drawParticles();
+  drawProgress(elapsed);
+
+  if (elapsed < TOTAL + 2000) {
+    animFrame = requestAnimationFrame(render);
+  }
+}
+
+function restart() {
+  btn.classList.remove('visible');
+  startTime = null;
+  triggered = new Set();
+  particles = [];
+  confetti = [];
+  shakeX = shakeY = shakeDecay = 0;
+  cancelAnimationFrame(animFrame);
+  animFrame = requestAnimationFrame(render);
+}
+
+// Start
+animFrame = requestAnimationFrame(render);
+</script>
+</body>
+</html>

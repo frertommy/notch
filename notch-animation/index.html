@@ -8,27 +8,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0c10;font-family:'Space Grotesk',sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#111318;border-bottom:1px solid #1e2028;z-index:100;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
-nav::-webkit-scrollbar{display:none}
+nav{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#111318;border-bottom:1px solid #1e2028;z-index:100;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+nav::-webkit-scrollbar{height:4px}
+nav::-webkit-scrollbar-track{background:transparent}
+nav::-webkit-scrollbar-thumb{background:#2a2d34;border-radius:2px}
 .nav-btn{
   background:#1a1d24;color:#888;border:1px solid #2a2d34;font-family:'Space Grotesk',sans-serif;
-  font-weight:600;font-size:13px;padding:8px 18px;border-radius:99px;cursor:pointer;
+  font-weight:600;font-size:12px;padding:6px 14px;border-radius:99px;cursor:pointer;
   transition:all .2s;white-space:nowrap;flex-shrink:0;
 }
 .nav-btn:hover{background:#222530;color:#ccc;border-color:#3a3d44}
 .nav-btn.active{background:#b2ed68;color:#000;border-color:#b2ed68}
-.logo{color:#b2ed68;font-weight:700;font-size:15px;font-family:'JetBrains Mono',monospace;margin-right:8px;flex-shrink:0}
+.logo{color:#b2ed68;font-weight:700;font-size:14px;font-family:'JetBrains Mono',monospace;margin-right:6px;flex-shrink:0}
+.divider{width:1px;height:20px;background:#2a2d34;flex-shrink:0;margin:0 4px}
+.section-label{color:#555;font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:500;text-transform:uppercase;letter-spacing:1px;flex-shrink:0;margin-right:2px}
 iframe{flex:1;width:100%;border:none;background:#0a0c10}
 </style>
 </head>
 <body>
 <nav>
   <span class="logo">NOTCH</span>
+  <span class="divider"></span>
+  <span class="section-label">Core</span>
   <button class="nav-btn active" data-src="evolution.html">Evolution</button>
   <button class="nav-btn" data-src="rivalry.html">Rivalry</button>
   <button class="nav-btn" data-src="retail.html">Retail</button>
   <button class="nav-btn" data-src="money.html">Money</button>
-  <button class="nav-btn" data-src="wallstreet.html">Wall Street</button>
+  <button class="nav-btn" data-src="wallstreet.html">Wall St</button>
+  <span class="divider"></span>
+  <span class="section-label">New</span>
+  <button class="nav-btn" data-src="transfer.html">Transfer</button>
+  <button class="nav-btn" data-src="diamond.html">Diamond Hands</button>
+  <button class="nav-btn" data-src="leaderboard.html">Leaderboard</button>
+  <button class="nav-btn" data-src="matchday.html">Match Day</button>
+  <button class="nav-btn" data-src="groupchat.html">Group Chat</button>
+  <button class="nav-btn" data-src="portfolio.html">Portfolio</button>
+  <button class="nav-btn" data-src="shortseller.html">Short Seller</button>
+  <button class="nav-btn" data-src="quests.html">Quests</button>
+  <button class="nav-btn" data-src="draft.html">Draft Day</button>
+  <button class="nav-btn" data-src="fomo.html">FOMO</button>
 </nav>
 <iframe id="viewer" src="evolution.html"></iframe>
 <script>

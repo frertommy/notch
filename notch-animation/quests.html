@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Quest Grind</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0c10; overflow: hidden; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+canvas { display: block; }
+#watchAgain {
+  display: none; position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(135deg, #b2ed68, #7ec832); color: #0a0c10; border: none;
+  padding: 14px 36px; border-radius: 30px; font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px; font-weight: 700; cursor: pointer; z-index: 10;
+  letter-spacing: 0.5px; transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 20px rgba(178,237,104,0.3);
+}
+#watchAgain:hover { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 30px rgba(178,237,104,0.5); }
+#progressBar {
+  position: fixed; bottom: 0; left: 0; height: 4px; background: linear-gradient(90deg, #b2ed68, #22d3ee);
+  z-index: 10; transition: width 0.05s linear;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="progressBar"></div>
+<button id="watchAgain">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const progressBar = document.getElementById('progressBar');
+const watchAgainBtn = document.getElementById('watchAgain');
+
+let W, H, scale, startTime, animationId;
+let fontsLoaded = false;
+
+// Colors
+const LIME = '#b2ed68';
+const GOLD = '#fbbf24';
+const CYAN = '#22d3ee';
+const PURPLE = '#a78bfa';
+const RED = '#ff4d4d';
+const BG = '#0a0c10';
+const WHITE = '#e8eaed';
+const DIM = '#4a5568';
+const CARD_BG = '#141820';
+const CARD_BORDER = '#1e2430';
+
+// Particles
+let particles = [];
+let confettiParts = [];
+let impactRings = [];
+let floatingPoints = [];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  scale = Math.min(W / 1080, H / 1920) * (W > H ? Math.min(W/1080, H/700) : 1);
+  if (W > H) scale = Math.min(W / 1200, H / 800);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Easing functions
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+0.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+0.9375;
+  return 7.5625*(t-=2.625/2.75)*t+0.984375;
+}
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function easeOutQuart(t) { return 1 - Math.pow(1-t, 4); }
+
+function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+function lerp(a, b, t) { return a + (b - a) * clamp(t, 0, 1); }
+function phaseT(time, start, end) { return clamp((time - start) / (end - start), 0, 1); }
+
+// Particle system
+function spawnParticles(x, y, count, color, speed = 3) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const vel = (Math.random() * 0.7 + 0.3) * speed;
+    particles.push({ x, y, vx: Math.cos(angle)*vel, vy: Math.sin(angle)*vel, life: 1, color, size: Math.random()*3+1 });
+  }
+}
+
+function spawnConfetti(x, y, count) {
+  const colors = [LIME, GOLD, CYAN, PURPLE, RED, '#fff'];
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI/2 + (Math.random()-0.5)*Math.PI*1.2;
+    const vel = Math.random()*8+4;
+    confettiParts.push({
+      x, y, vx: Math.cos(angle)*vel, vy: Math.sin(angle)*vel,
+      life: 1, color: colors[Math.floor(Math.random()*colors.length)],
+      rot: Math.random()*Math.PI*2, rotV: (Math.random()-0.5)*0.3,
+      w: Math.random()*8+4, h: Math.random()*4+2
+    });
+  }
+}
+
+function spawnImpactRing(x, y, color) {
+  impactRings.push({ x, y, radius: 0, maxRadius: 80*scale, life: 1, color });
+}
+
+function spawnFloatingPoint(x, y, text, color = LIME) {
+  floatingPoints.push({ x, y, text, color, life: 1, startY: y });
+}
+
+function updateParticles(dt) {
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.life -= dt * 1.5; p.vy += 0.05;
+    return p.life > 0;
+  });
+  confettiParts = confettiParts.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.vx *= 0.99;
+    p.rot += p.rotV; p.life -= dt * 0.7;
+    return p.life > 0;
+  });
+  impactRings = impactRings.filter(r => {
+    r.radius += (r.maxRadius - r.radius) * 0.08;
+    r.life -= dt * 2;
+    return r.life > 0;
+  });
+  floatingPoints = floatingPoints.filter(p => {
+    p.y -= 1.5; p.life -= dt * 1.2;
+    return p.life > 0;
+  });
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life * 0.8;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * scale, 0, Math.PI*2);
+    ctx.fill();
+  });
+  confettiParts.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.w/2*scale, -p.h/2*scale, p.w*scale, p.h*scale);
+    ctx.restore();
+  });
+  impactRings.forEach(r => {
+    ctx.globalAlpha = r.life * 0.6;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 3 * scale * r.life;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI*2);
+    ctx.stroke();
+  });
+  floatingPoints.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.font = `bold ${18*scale}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// Draw helpers
+function drawRoundedRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawProgressBarFill(x, y, w, h, progress, color1, color2) {
+  // background
+  drawRoundedRect(x, y, w, h, h/2);
+  ctx.fillStyle = '#1a1f2e';
+  ctx.fill();
+  // fill
+  if (progress > 0.01) {
+    const fw = w * clamp(progress, 0, 1);
+    drawRoundedRect(x, y, Math.max(fw, h), h, h/2);
+    const grad = ctx.createLinearGradient(x, y, x+fw, y);
+    grad.addColorStop(0, color1);
+    grad.addColorStop(1, color2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+}
+
+function drawCheckmark(x, y, size, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = LIME;
+  ctx.lineWidth = 3 * scale;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - size*0.4, y);
+  ctx.lineTo(x - size*0.1, y + size*0.3);
+  ctx.lineTo(x + size*0.4, y - size*0.3);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawGlow(x, y, radius, color, alpha = 0.3) {
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color + Math.round(alpha*255).toString(16).padStart(2,'0'));
+  grad.addColorStop(1, color + '00');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x - radius, y - radius, radius*2, radius*2);
+}
+
+// Background grid
+function drawBgGrid(alpha) {
+  ctx.globalAlpha = alpha * 0.05;
+  ctx.strokeStyle = LIME;
+  ctx.lineWidth = 1;
+  const spacing = 40 * scale;
+  for (let x = 0; x < W; x += spacing) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += spacing) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Tier data
+const tiers = [
+  { name: 'Grassroots', icon: '\u26BD', color: '#6b7280' },
+  { name: 'Amateur', icon: '\uD83E\uDD49', color: '#a78bfa' },
+  { name: 'Semi-Pro', icon: '\uD83E\uDD48', color: CYAN },
+  { name: 'Professional', icon: '\uD83E\uDD47', color: GOLD },
+  { name: 'Elite', icon: '\uD83C\uDFC6', color: '#f97316' },
+  { name: 'Legend', icon: '\uD83D\uDC51', color: GOLD }
+];
+
+// Quest data
+const quests = [
+  { title: 'First Blood', desc: 'Open your first position', pts: 250, icon: '\uD83D\uDDE1\uFE0F', completed: true, progress: 1, total: 1 },
+  { title: 'Pitch Perfect', desc: 'Trade 5 different teams', pts: 500, icon: '\u26BD', completed: false, progress: 3, total: 5 },
+  { title: 'Diamond Hands', desc: 'Hold for 72 hours', pts: 600, icon: '\uD83D\uDC8E', completed: false, progress: 0, total: 1 },
+  { title: 'Short Seller', desc: 'Profit from 3 shorts', pts: 750, icon: '\uD83D\uDCC9', completed: false, progress: 0, total: 3 },
+  { title: 'UCL Believer', desc: 'Trade all UCL quarter-final teams', pts: 1500, icon: '\uD83C\uDFC6', completed: false, progress: 0, total: 8 }
+];
+
+// Season rewards
+const seasonRewards = [
+  { pts: '8,000pts', reward: 'Exclusive Feed', icon: '\uD83D\uDCE1', color: CYAN },
+  { pts: '15,000pts', reward: 'Pro Multiplier', icon: '\u26A1', color: PURPLE },
+  { pts: '40,000pts', reward: 'Elite Title', icon: '\uD83C\uDFC6', color: GOLD },
+  { pts: '100,000pts', reward: 'LEGEND STATUS + AIRDROP', icon: '\uD83D\uDC51', color: GOLD }
+];
+
+// Phase triggers for confetti / effects
+let phase4Triggered = false;
+let phase3Triggers = [false, false, false, false, false, false];
+let phase5PointTriggers = [false, false, false];
+
+const TOTAL_DURATION = 30;
+
+function draw(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = (timestamp - startTime) / 1000;
+  const time = elapsed % (TOTAL_DURATION + 1); // +1 for watch again pause
+  const dt = 1/60;
+
+  // Progress bar
+  progressBar.style.width = (clamp(time / TOTAL_DURATION, 0, 1) * 100) + '%';
+
+  // Show watch again at end
+  if (time >= TOTAL_DURATION) {
+    watchAgainBtn.style.display = 'block';
+  } else {
+    watchAgainBtn.style.display = 'none';
+  }
+
+  // Clear
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Background grid fades in/out
+  drawBgGrid(clamp(time / 2, 0, 0.5));
+
+  // Background ambient particles
+  if (Math.random() < 0.1 && time < TOTAL_DURATION) {
+    const px = Math.random() * W;
+    const py = H + 10;
+    particles.push({ x: px, y: py, vx: (Math.random()-0.5)*0.5, vy: -Math.random()*1.5-0.5, life: 1, color: LIME, size: Math.random()*1.5+0.5 });
+  }
+
+  updateParticles(dt);
+
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // ====== PHASE 1: 0-4s — Title + Tier Bar ======
+  if (time >= 0 && time < 9) {
+    const titleAlpha = easeOutCubic(phaseT(time, 0.2, 1.2));
+    const subtitleAlpha = easeOutCubic(phaseT(time, 0.6, 1.6));
+    const tierAlpha = easeOutCubic(phaseT(time, 1.5, 2.8));
+    const fadeOut = time > 8 ? 1 - phaseT(time, 8, 9) : 1;
+
+    // Title
+    ctx.globalAlpha = titleAlpha * fadeOut;
+    ctx.fillStyle = WHITE;
+    ctx.font = `700 ${32*scale}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    const titleY = cy - 200 * scale;
+    ctx.fillText('SEASON 1', cx, titleY);
+
+    // Subtitle
+    ctx.globalAlpha = subtitleAlpha * fadeOut;
+    ctx.fillStyle = LIME;
+    ctx.font = `600 ${22*scale}px 'JetBrains Mono', monospace`;
+    ctx.fillText('QUEST LOG', cx, titleY + 40*scale);
+
+    // Decorative line
+    ctx.globalAlpha = subtitleAlpha * 0.3 * fadeOut;
+    ctx.strokeStyle = LIME;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 120*scale, titleY + 55*scale);
+    ctx.lineTo(cx + 120*scale, titleY + 55*scale);
+    ctx.stroke();
+
+    // Tier bar
+    ctx.globalAlpha = tierAlpha * fadeOut;
+    const barY = titleY + 80*scale;
+    const barW = Math.min(600*scale, W*0.85);
+    const barX = cx - barW/2;
+    const barH = 14*scale;
+
+    // Tier progress - starts at Grassroots, slowly fills
+    const tierProgress = time < 4 ? easeOutCubic(phaseT(time, 2.5, 4)) * 0.08 : 0.08;
+    drawProgressBarFill(barX, barY, barW, barH, tierProgress, '#6b7280', LIME);
+
+    // Tier labels
+    const tierSpacing = barW / (tiers.length - 1);
+    tiers.forEach((tier, i) => {
+      const tx = barX + i * tierSpacing;
+      const isActive = i === 0;
+
+      // Icon
+      ctx.globalAlpha = tierAlpha * fadeOut * (isActive ? 1 : 0.4);
+      ctx.font = `${18*scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(tier.icon, tx, barY - 12*scale);
+
+      // Name
+      ctx.font = `500 ${9*scale}px 'Space Grotesk', sans-serif`;
+      ctx.fillStyle = isActive ? LIME : DIM;
+      ctx.fillText(tier.name, tx, barY + barH + 18*scale);
+    });
+
+    // Active indicator glow
+    if (tierAlpha > 0.5) {
+      drawGlow(barX + tierProgress * barW, barY + barH/2, 20*scale, LIME, 0.4 * fadeOut);
+    }
+  }
+
+  // ====== PHASE 2: 4-9s — Quest Cards ======
+  if (time >= 3.5 && time < 9.5) {
+    const fadeIn = easeOutCubic(phaseT(time, 3.5, 4.5));
+    const fadeOut2 = time > 8.5 ? 1 - phaseT(time, 8.5, 9.5) : 1;
+    const alpha = fadeIn * fadeOut2;
+
+    const cardW = Math.min(420*scale, W*0.88);
+    const cardH = 70*scale;
+    const cardGap = 12*scale;
+    const totalH = quests.length * (cardH + cardGap);
+    const startY = cy - totalH/2 + 30*scale;
+
+    quests.forEach((q, i) => {
+      const cardDelay = 4 + i * 0.6;
+      const cardT = easeOutElastic(clamp(phaseT(time, cardDelay, cardDelay + 0.8), 0, 1));
+      if (cardT <= 0) return;
+
+      const cardX = cx - cardW/2;
+      const cardY = startY + i * (cardH + cardGap);
+      const scaleAmt = cardT;
+      const cardAlpha = alpha * clamp(cardT, 0, 1);
+
+      ctx.globalAlpha = cardAlpha;
+      ctx.save();
+      ctx.translate(cardX + cardW/2, cardY + cardH/2);
+      ctx.scale(scaleAmt, scaleAmt);
+      ctx.translate(-(cardX + cardW/2), -(cardY + cardH/2));
+
+      // Card background
+      drawRoundedRect(cardX, cardY, cardW, cardH, 10*scale);
+      ctx.fillStyle = CARD_BG;
+      ctx.fill();
+      ctx.strokeStyle = q.completed ? LIME + '40' : CARD_BORDER;
+      ctx.lineWidth = 1.5*scale;
+      ctx.stroke();
+
+      // Left accent
+      if (q.completed) {
+        drawRoundedRect(cardX, cardY, 4*scale, cardH, 2*scale);
+        ctx.fillStyle = LIME;
+        ctx.fill();
+      }
+
+      // Icon
+      ctx.font = `${22*scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(q.icon, cardX + 30*scale, cardY + cardH/2 + 7*scale);
+
+      // Title
+      ctx.fillStyle = WHITE;
+      ctx.font = `600 ${14*scale}px 'Space Grotesk', sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText(q.title, cardX + 55*scale, cardY + 24*scale);
+
+      // Description
+      ctx.fillStyle = DIM;
+      ctx.font = `400 ${10*scale}px 'Space Grotesk', sans-serif`;
+      ctx.fillText(q.desc, cardX + 55*scale, cardY + 40*scale);
+
+      // Points
+      ctx.fillStyle = GOLD;
+      ctx.font = `700 ${13*scale}px 'JetBrains Mono', monospace`;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${q.pts}pts`, cardX + cardW - 15*scale, cardY + 24*scale);
+
+      // Progress or check
+      if (q.completed) {
+        ctx.fillStyle = LIME;
+        ctx.font = `600 ${11*scale}px 'JetBrains Mono', monospace`;
+        ctx.fillText('\u2713 COMPLETED', cardX + cardW - 15*scale, cardY + 52*scale);
+      } else if (q.total > 1) {
+        const progW = 80*scale;
+        const progX = cardX + cardW - 15*scale - progW;
+        const progY = cardY + 44*scale;
+        drawProgressBarFill(progX, progY, progW, 8*scale, q.progress/q.total, CYAN, LIME);
+        ctx.fillStyle = DIM;
+        ctx.font = `500 ${9*scale}px 'JetBrains Mono', monospace`;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${q.progress}/${q.total}`, cardX + cardW - 15*scale, progY + 22*scale);
+      }
+
+      ctx.restore();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== PHASE 3: 9-14s — Quest Completion Montage ======
+  if (time >= 9 && time < 14.5) {
+    const fadeIn3 = easeOutCubic(phaseT(time, 9, 9.8));
+    const fadeOut3 = time > 13.5 ? 1 - phaseT(time, 13.5, 14.5) : 1;
+    const alpha3 = fadeIn3 * fadeOut3;
+
+    // Points counter
+    const pointValues = [250, 750, 1350, 2100, 3600, 5200];
+    const pointTimings = [9.2, 9.9, 10.6, 11.3, 12.0, 12.7];
+    let currentPoints = 0;
+    let completedCount = 0;
+
+    for (let i = 0; i < pointTimings.length; i++) {
+      if (time >= pointTimings[i]) {
+        if (i < pointTimings.length - 1 && time < pointTimings[i+1]) {
+          const t = phaseT(time, pointTimings[i], pointTimings[i+1]);
+          currentPoints = Math.round(lerp(pointValues[i], pointValues[Math.min(i+1, pointValues.length-1)], easeOutCubic(t)));
+        } else if (i === pointTimings.length - 1) {
+          currentPoints = pointValues[i];
+        }
+        completedCount = i + 1;
+
+        // Impact ring trigger
+        if (!phase3Triggers[i]) {
+          phase3Triggers[i] = true;
+          spawnImpactRing(cx, cy - 40*scale, LIME);
+          spawnParticles(cx, cy - 40*scale, 15, LIME, 4);
+          spawnFloatingPoint(cx + (Math.random()-0.5)*100*scale, cy - 80*scale, `+${pointValues[i] - (i>0?pointValues[i-1]:0)}pts`, GOLD);
+        }
+      }
+    }
+
+    // Big points display
+    ctx.globalAlpha = alpha3;
+    ctx.fillStyle = WHITE;
+    ctx.font = `700 ${56*scale}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(currentPoints.toLocaleString(), cx, cy - 30*scale);
+
+    ctx.fillStyle = DIM;
+    ctx.font = `500 ${16*scale}px 'Space Grotesk', sans-serif`;
+    ctx.fillText('TOTAL POINTS', cx, cy + 10*scale);
+
+    // Completed quests indicator
+    const checkY = cy + 60*scale;
+    for (let i = 0; i < 6; i++) {
+      const dotX = cx + (i - 2.5) * 30*scale;
+      const done = i < completedCount;
+      ctx.beginPath();
+      ctx.arc(dotX, checkY, 10*scale, 0, Math.PI*2);
+      ctx.fillStyle = done ? LIME : '#1a1f2e';
+      ctx.fill();
+      if (done) {
+        drawCheckmark(dotX, checkY, 10*scale, alpha3);
+      }
+    }
+
+    // Tier bar at bottom showing progress
+    const barW = Math.min(500*scale, W*0.8);
+    const barX = cx - barW/2;
+    const barY = cy + 110*scale;
+    const tierProg = easeOutCubic(phaseT(time, 9.5, 13)) * 0.42;
+
+    ctx.globalAlpha = alpha3 * 0.8;
+    drawProgressBarFill(barX, barY, barW, 12*scale, tierProg, '#6b7280', CYAN);
+
+    // Tier labels on bar
+    ctx.globalAlpha = alpha3 * 0.5;
+    ctx.font = `500 ${9*scale}px 'Space Grotesk', sans-serif`;
+    ctx.fillStyle = DIM;
+    ctx.textAlign = 'center';
+    ctx.fillText('Grassroots', barX, barY + 28*scale);
+    ctx.fillText('Semi-Pro', barX + barW*0.42, barY + 28*scale);
+    ctx.fillText('Legend', barX + barW, barY + 28*scale);
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== PHASE 4: 14-18s — TIER UP! ======
+  if (time >= 14 && time < 18.5) {
+    const fadeIn4 = easeOutCubic(phaseT(time, 14, 14.8));
+    const fadeOut4 = time > 17.5 ? 1 - phaseT(time, 17.5, 18.5) : 1;
+    const alpha4 = fadeIn4 * fadeOut4;
+
+    if (!phase4Triggered && time > 14.3) {
+      phase4Triggered = true;
+      spawnConfetti(cx, cy - 60*scale, 80);
+      spawnImpactRing(cx, cy - 20*scale, CYAN);
+      spawnImpactRing(cx, cy - 20*scale, LIME);
+    }
+
+    // Big glow
+    const glowPulse = 0.8 + Math.sin(time * 4) * 0.2;
+    drawGlow(cx, cy - 60*scale, 200*scale * glowPulse, CYAN, 0.15 * alpha4);
+
+    // Arrow up
+    const arrowScale = easeOutElastic(phaseT(time, 14.2, 15.2));
+    ctx.globalAlpha = alpha4;
+    ctx.font = `${50*scale * arrowScale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('\u2B06\uFE0F', cx, cy - 120*scale);
+
+    // SEMI-PRO UNLOCKED
+    const textScale = easeOutElastic(phaseT(time, 14.5, 15.5));
+    ctx.font = `700 ${36*scale * textScale}px 'Space Grotesk', sans-serif`;
+    ctx.fillStyle = CYAN;
+    ctx.fillText('SEMI-PRO', cx, cy - 50*scale);
+
+    ctx.fillStyle = LIME;
+    ctx.font = `600 ${18*scale}px 'JetBrains Mono', monospace`;
+    ctx.fillText('UNLOCKED', cx, cy - 15*scale);
+
+    // Badge
+    const badgeT = easeOutBounce(phaseT(time, 15, 16));
+    const badgeY = cy + 20*scale;
+    ctx.save();
+    ctx.translate(cx, badgeY);
+    ctx.scale(badgeT, badgeT);
+    // Badge circle
+    ctx.beginPath();
+    ctx.arc(0, 0, 30*scale, 0, Math.PI*2);
+    const badgeGrad = ctx.createRadialGradient(0, -10*scale, 0, 0, 0, 30*scale);
+    badgeGrad.addColorStop(0, CYAN);
+    badgeGrad.addColorStop(1, '#0e7490');
+    ctx.fillStyle = badgeGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#fff3';
+    ctx.lineWidth = 2*scale;
+    ctx.stroke();
+    ctx.font = `${24*scale}px sans-serif`;
+    ctx.fillText('\uD83E\uDD48', 0, 9*scale);
+    ctx.restore();
+
+    // Rewards
+    const rewards = ['1.5x Points Multiplier', 'Exclusive Feed Access', 'Pro Badge'];
+    const rewardIcons = ['\u26A1', '\uD83D\uDCE1', '\uD83C\uDFC5'];
+    const rewardColors = [GOLD, CYAN, PURPLE];
+    rewards.forEach((r, i) => {
+      const rT = easeOutCubic(phaseT(time, 15.5 + i*0.4, 16.2 + i*0.4));
+      const rY = cy + 80*scale + i * 40*scale;
+      ctx.globalAlpha = alpha4 * rT;
+
+      drawRoundedRect(cx - 140*scale, rY - 15*scale, 280*scale, 32*scale, 8*scale);
+      ctx.fillStyle = CARD_BG;
+      ctx.fill();
+      ctx.strokeStyle = rewardColors[i] + '40';
+      ctx.lineWidth = 1*scale;
+      ctx.stroke();
+
+      ctx.font = `${16*scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(rewardIcons[i], cx - 110*scale, rY + 5*scale);
+
+      ctx.fillStyle = WHITE;
+      ctx.font = `500 ${13*scale}px 'Space Grotesk', sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText(r, cx - 90*scale, rY + 4*scale);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== PHASE 5: 18-22s — Multiplier in Action ======
+  if (time >= 18 && time < 22.5) {
+    const fadeIn5 = easeOutCubic(phaseT(time, 18, 18.8));
+    const fadeOut5 = time > 21.5 ? 1 - phaseT(time, 21.5, 22.5) : 1;
+    const alpha5 = fadeIn5 * fadeOut5;
+
+    // Arsenal boost card
+    const cardScale = easeOutElastic(phaseT(time, 18.2, 19.2));
+    ctx.globalAlpha = alpha5;
+    ctx.save();
+    ctx.translate(cx, cy - 80*scale);
+    ctx.scale(cardScale, cardScale);
+
+    const boostW = 320*scale;
+    const boostH = 100*scale;
+    drawRoundedRect(-boostW/2, -boostH/2, boostW, boostH, 14*scale);
+    ctx.fillStyle = '#1a0a0a';
+    ctx.fill();
+
+    // Red glow border
+    ctx.strokeStyle = RED + '80';
+    ctx.lineWidth = 2*scale;
+    ctx.stroke();
+    drawGlow(0, 0, 100*scale, RED, 0.15);
+
+    // Arsenal text
+    ctx.fillStyle = RED;
+    ctx.font = `700 ${24*scale}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Arsenal', 0, -15*scale);
+
+    // 2.0x BOOST
+    ctx.fillStyle = GOLD;
+    ctx.font = `700 ${20*scale}px 'JetBrains Mono', monospace`;
+    ctx.fillText('2.0x BOOST', 0, 15*scale);
+
+    // Fixture Week
+    ctx.fillStyle = DIM;
+    ctx.font = `500 ${12*scale}px 'Space Grotesk', sans-serif`;
+    ctx.fillText('Fixture Week', 0, 38*scale);
+
+    ctx.restore();
+
+    // Flying points
+    const pointsData = [
+      { text: '+500pts', time: 19.2, x: -80, color: LIME },
+      { text: '+1,000pts', time: 19.8, x: 60, color: GOLD },
+      { text: '+250pts', time: 20.4, x: -30, color: CYAN }
+    ];
+
+    pointsData.forEach((p, i) => {
+      if (time >= p.time) {
+        const pT = easeOutCubic(phaseT(time, p.time, p.time + 0.8));
+        const pFade = time > p.time + 1.5 ? 1 - phaseT(time, p.time + 1.5, p.time + 2) : 1;
+        ctx.globalAlpha = alpha5 * pT * pFade;
+        ctx.fillStyle = p.color;
+        ctx.font = `700 ${22*scale}px 'JetBrains Mono', monospace`;
+        ctx.textAlign = 'center';
+        const py = cy + 40*scale - pT * 60*scale + i * 35*scale;
+        ctx.fillText(p.text, cx + p.x*scale, py);
+
+        if (!phase5PointTriggers[i] && time >= p.time) {
+          phase5PointTriggers[i] = true;
+          spawnParticles(cx + p.x*scale, py, 8, p.color, 2);
+        }
+      }
+    });
+
+    // Stacking counter
+    const stackT = easeOutCubic(phaseT(time, 20, 21.5));
+    if (stackT > 0) {
+      ctx.globalAlpha = alpha5 * stackT;
+      const totalPts = Math.round(lerp(0, 1750, stackT));
+      ctx.fillStyle = WHITE;
+      ctx.font = `700 ${28*scale}px 'JetBrains Mono', monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`${totalPts.toLocaleString()}pts earned`, cx, cy + 160*scale);
+      ctx.fillStyle = DIM;
+      ctx.font = `500 ${13*scale}px 'Space Grotesk', sans-serif`;
+      ctx.fillText('this fixture week', cx, cy + 185*scale);
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== PHASE 6: 22-26s — Season Rewards Preview ======
+  if (time >= 22 && time < 26.5) {
+    const fadeIn6 = easeOutCubic(phaseT(time, 22, 22.8));
+    const fadeOut6 = time > 25.5 ? 1 - phaseT(time, 25.5, 26.5) : 1;
+    const alpha6 = fadeIn6 * fadeOut6;
+
+    // Title
+    ctx.globalAlpha = alpha6;
+    ctx.fillStyle = WHITE;
+    ctx.font = `700 ${26*scale}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('SEASON REWARDS', cx, cy - 160*scale);
+
+    ctx.fillStyle = DIM;
+    ctx.font = `500 ${13*scale}px 'Space Grotesk', sans-serif`;
+    ctx.fillText('Climb the ladder. Unlock the prizes.', cx, cy - 130*scale);
+
+    // Reward cards
+    const cardW = Math.min(380*scale, W*0.85);
+    const cardH = 58*scale;
+    const cardGap = 14*scale;
+    const totalH6 = seasonRewards.length * (cardH + cardGap);
+    const startY6 = cy - totalH6/2 + 20*scale;
+
+    seasonRewards.forEach((r, i) => {
+      const rDelay = 22.5 + i * 0.35;
+      const rT = easeOutCubic(phaseT(time, rDelay, rDelay + 0.6));
+      if (rT <= 0) return;
+
+      const rX = cx - cardW/2;
+      const rY = startY6 + i * (cardH + cardGap);
+      const isLegend = i === seasonRewards.length - 1;
+
+      ctx.globalAlpha = alpha6 * rT;
+
+      // Card
+      drawRoundedRect(rX, rY, cardW, cardH, 10*scale);
+      ctx.fillStyle = isLegend ? '#1a1508' : CARD_BG;
+      ctx.fill();
+
+      if (isLegend) {
+        // Gold glow for Legend
+        const pulse = 0.6 + Math.sin(time * 3) * 0.4;
+        ctx.strokeStyle = GOLD + Math.round(pulse * 180).toString(16).padStart(2,'0');
+        ctx.lineWidth = 2*scale;
+        ctx.stroke();
+        drawGlow(cx, rY + cardH/2, 120*scale, GOLD, 0.1 * alpha6 * pulse);
+      } else {
+        ctx.strokeStyle = r.color + '30';
+        ctx.lineWidth = 1*scale;
+        ctx.stroke();
+      }
+
+      // Left accent bar
+      drawRoundedRect(rX, rY, 4*scale, cardH, 2*scale);
+      ctx.fillStyle = r.color;
+      ctx.fill();
+
+      // Icon
+      ctx.font = `${22*scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(r.icon, rX + 30*scale, rY + cardH/2 + 8*scale);
+
+      // Points threshold
+      ctx.fillStyle = r.color;
+      ctx.font = `700 ${14*scale}px 'JetBrains Mono', monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText(r.pts, rX + 52*scale, rY + 22*scale);
+
+      // Arrow
+      ctx.fillStyle = DIM;
+      ctx.font = `${12*scale}px sans-serif`;
+      ctx.fillText('\u2192', rX + 52*scale + ctx.measureText(r.pts).width + 8*scale, rY + 22*scale);
+
+      // Reward name
+      ctx.fillStyle = WHITE;
+      ctx.font = `500 ${13*scale}px 'Space Grotesk', sans-serif`;
+      ctx.fillText(r.reward, rX + 52*scale, rY + 44*scale);
+    });
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== PHASE 7: 26-30s — Finale ======
+  if (time >= 26) {
+    const fadeIn7 = easeOutCubic(phaseT(time, 26, 26.8));
+    const alpha7 = fadeIn7;
+
+    const lines = [
+      { text: 'Every trade earns points.', delay: 26.3, color: WHITE, size: 22, font: 'Space Grotesk' },
+      { text: 'Every point climbs the ladder.', delay: 27.0, color: LIME, size: 22, font: 'Space Grotesk' },
+      { text: "What's your tier?", delay: 27.8, color: GOLD, size: 30, font: 'Space Grotesk', bold: true },
+      { text: 'notch.win', delay: 28.5, color: LIME, size: 36, font: 'JetBrains Mono', bold: true }
+    ];
+
+    lines.forEach((line, i) => {
+      const lT = easeOutCubic(phaseT(time, line.delay, line.delay + 0.5));
+      if (lT <= 0) return;
+
+      const lY = cy - 60*scale + i * 50*scale;
+      ctx.globalAlpha = alpha7 * lT;
+      ctx.fillStyle = line.color;
+      const weight = line.bold ? '700' : '500';
+      ctx.font = `${weight} ${line.size*scale}px '${line.font}', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(line.text, cx, lY);
+
+      // Glow on notch.win
+      if (i === 3 && lT > 0.5) {
+        const pulse = 0.5 + Math.sin(time * 3) * 0.3;
+        drawGlow(cx, lY - 10*scale, 150*scale, LIME, 0.12 * pulse);
+      }
+    });
+
+    // Tier icons parade at bottom
+    const paradeT = easeOutCubic(phaseT(time, 28, 29));
+    if (paradeT > 0) {
+      ctx.globalAlpha = alpha7 * paradeT * 0.6;
+      const paradeY = cy + 140*scale;
+      tiers.forEach((tier, i) => {
+        const tDelay = phaseT(time, 28 + i*0.1, 28.5 + i*0.1);
+        const tA = easeOutCubic(tDelay);
+        ctx.globalAlpha = alpha7 * tA * 0.7;
+        const tx = cx + (i - 2.5) * 50*scale;
+        ctx.font = `${24*scale}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(tier.icon, tx, paradeY);
+      });
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw all particles on top
+  drawParticles();
+
+  // Global bottom progress text
+  if (time < TOTAL_DURATION) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = DIM;
+    ctx.font = `400 ${10*scale}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.floor(time)}s / ${TOTAL_DURATION}s`, W - 15, H - 15);
+    ctx.globalAlpha = 1;
+  }
+
+  animationId = requestAnimationFrame(draw);
+}
+
+// Start
+function startAnimation() {
+  startTime = null;
+  phase4Triggered = false;
+  phase3Triggers = [false, false, false, false, false, false];
+  phase5PointTriggers = [false, false, false];
+  particles = [];
+  confettiParts = [];
+  impactRings = [];
+  floatingPoints = [];
+  watchAgainBtn.style.display = 'none';
+  if (animationId) cancelAnimationFrame(animationId);
+  animationId = requestAnimationFrame(draw);
+}
+
+watchAgainBtn.addEventListener('click', startAnimation);
+
+// Wait for fonts then start
+document.fonts.ready.then(() => {
+  fontsLoaded = true;
+  startAnimation();
+});
+</script>
+</body>
+</html>

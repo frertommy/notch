@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Diamond Hands</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0c10;
+    overflow: hidden;
+    font-family: 'Space Grotesk', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas { display: block; }
+  #watchAgain {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: transparent;
+    border: 2px solid #b2ed68;
+    color: #b2ed68;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: none;
+    z-index: 10;
+    transition: all 0.3s;
+    letter-spacing: 0.5px;
+  }
+  #watchAgain:hover {
+    background: #b2ed68;
+    color: #0a0c10;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain" onclick="restart()">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const watchBtn = document.getElementById('watchAgain');
+
+// Colors
+const BG = '#0a0c10';
+const LIME = '#b2ed68';
+const RED = '#ff4d4d';
+const WHITE = '#ffffff';
+const GOLD = '#fbbf24';
+const DARK_CARD = '#141820';
+const CARD_BORDER = '#1e2430';
+
+// Timing
+const TOTAL_DURATION = 30; // seconds
+const FPS = 60;
+let frame = 0;
+let running = true;
+let shakeX = 0, shakeY = 0;
+
+// Particles
+let particles = [];
+let confetti = [];
+
+// Price data for chart
+const pricePoints = [
+  { month: 0, price: 340 },   // Aug
+  { month: 1, price: 330 },
+  { month: 2, price: 310 },   // Oct low
+  { month: 3, price: 320 },
+  { month: 4, price: 340 },   // Recovery
+  { month: 5, price: 360 },
+  { month: 6, price: 385 },   // Dec
+  { month: 7, price: 395 },
+  { month: 8, price: 410 },
+  { month: 9, price: 430 },   // Feb UCL
+  { month: 10, price: 460 },
+  { month: 11, price: 498 },  // May
+];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Scale helper
+function S(v) { return v * Math.min(canvas.width / 1200, canvas.height / 800); }
+
+// Easing functions
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+0.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+0.9375;
+  return 7.5625*(t-=2.625/2.75)*t+0.984375;
+}
+function easeInOutCubic(t) { return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+
+// Particle system
+function spawnParticles(x, y, count, color, speed, life) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const vel = (Math.random() * 0.6 + 0.4) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * vel,
+      vy: Math.sin(angle) * vel,
+      life: life || 60,
+      maxLife: life || 60,
+      color,
+      size: S(Math.random() * 3 + 1),
+    });
+  }
+}
+
+function spawnConfetti(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    confetti.push({
+      x: x + (Math.random() - 0.5) * S(200),
+      y: y - S(50),
+      vx: (Math.random() - 0.5) * S(4),
+      vy: -Math.random() * S(6) - S(2),
+      life: 120 + Math.random() * 60,
+      maxLife: 180,
+      color: [LIME, GOLD, WHITE, '#60ff60', '#90ee90'][Math.floor(Math.random() * 5)],
+      w: S(Math.random() * 6 + 3),
+      h: S(Math.random() * 10 + 4),
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.2,
+    });
+  }
+}
+
+function spawnRedParticles(count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: -10,
+      vx: (Math.random() - 0.5) * S(1),
+      vy: Math.random() * S(3) + S(1),
+      life: 90,
+      maxLife: 90,
+      color: RED,
+      size: S(Math.random() * 2 + 1),
+    });
+  }
+}
+
+function spawnGreenRain(count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: -10,
+      vx: (Math.random() - 0.5) * S(0.5),
+      vy: Math.random() * S(2) + S(1.5),
+      life: 100,
+      maxLife: 100,
+      color: LIME,
+      size: S(Math.random() * 2.5 + 1),
+    });
+  }
+}
+
+function updateParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += S(0.03);
+    p.life--;
+    return p.life > 0;
+  });
+  confetti = confetti.filter(c => {
+    c.x += c.vx;
+    c.y += c.vy;
+    c.vy += S(0.08);
+    c.rot += c.rotV;
+    c.life--;
+    return c.life > 0;
+  });
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  confetti.forEach(c => {
+    const alpha = c.life / c.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = c.color;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+    ctx.restore();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// Screen shake
+function applyShake(intensity) {
+  shakeX = (Math.random() - 0.5) * intensity;
+  shakeY = (Math.random() - 0.5) * intensity;
+}
+
+// Drawing helpers
+function drawText(text, x, y, size, color, align, font, alpha) {
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.fillStyle = color || WHITE;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${font || '600'} ${S(size)}px 'Space Grotesk', sans-serif`;
+  ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawMonoText(text, x, y, size, color, align, alpha) {
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.fillStyle = color || WHITE;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${S(size)}px 'JetBrains Mono', monospace`;
+  ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawCard(x, y, w, h, alpha, borderColor) {
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.fillStyle = DARK_CARD;
+  ctx.strokeStyle = borderColor || CARD_BORDER;
+  ctx.lineWidth = S(1.5);
+  const r = S(12);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawGlow(x, y, radius, color, alpha) {
+  ctx.globalAlpha = alpha || 0.3;
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// Draw mini chart
+function drawChart(cx, cy, w, h, endIndex, color, alpha, showGradient) {
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  const pts = pricePoints.slice(0, endIndex + 1);
+  if (pts.length < 2) { ctx.globalAlpha = 1; return; }
+
+  const minP = 290, maxP = 520;
+  const getX = (i) => cx - w/2 + (i / (pricePoints.length - 1)) * w;
+  const getY = (p) => cy + h/2 - ((p - minP) / (maxP - minP)) * h;
+
+  // Gradient fill
+  if (showGradient) {
+    ctx.beginPath();
+    ctx.moveTo(getX(0), getY(pts[0].price));
+    for (let i = 1; i < pts.length; i++) {
+      const prev = { x: getX(i-1), y: getY(pts[i-1].price) };
+      const curr = { x: getX(i), y: getY(pts[i].price) };
+      const cpx = (prev.x + curr.x) / 2;
+      ctx.bezierCurveTo(cpx, prev.y, cpx, curr.y, curr.x, curr.y);
+    }
+    ctx.lineTo(getX(pts.length - 1), cy + h/2);
+    ctx.lineTo(getX(0), cy + h/2);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(cx, cy - h/2, cx, cy + h/2);
+    grad.addColorStop(0, color === RED ? 'rgba(255,77,77,0.3)' : 'rgba(178,237,104,0.25)');
+    grad.addColorStop(1, 'rgba(10,12,16,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(getX(0), getY(pts[0].price));
+  for (let i = 1; i < pts.length; i++) {
+    const prev = { x: getX(i-1), y: getY(pts[i-1].price) };
+    const curr = { x: getX(i), y: getY(pts[i].price) };
+    const cpx = (prev.x + curr.x) / 2;
+    ctx.bezierCurveTo(cpx, prev.y, cpx, curr.y, curr.x, curr.y);
+  }
+  ctx.strokeStyle = color || LIME;
+  ctx.lineWidth = S(2.5);
+  ctx.stroke();
+
+  // Glow on last point
+  const lastX = getX(pts.length - 1);
+  const lastY = getY(pts[pts.length - 1].price);
+  drawGlow(lastX, lastY, S(20), color || LIME, 0.4 * (alpha || 1));
+  ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+  ctx.fillStyle = color || LIME;
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, S(4), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 1;
+}
+
+// Progress bar
+function drawProgress(t) {
+  const barH = S(3);
+  const y = canvas.height - barH;
+  ctx.fillStyle = '#1a1d25';
+  ctx.fillRect(0, y, canvas.width, barH);
+  ctx.fillStyle = LIME;
+  ctx.fillRect(0, y, canvas.width * (t / TOTAL_DURATION), barH);
+}
+
+// Diamond sparkle burst
+function drawDiamond(x, y, size, alpha, sparklePhase) {
+  ctx.globalAlpha = alpha;
+  ctx.font = `${S(size)}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('\u{1F48E}', x, y);
+
+  // Sparkle rays
+  if (sparklePhase > 0) {
+    const rayCount = 8;
+    for (let i = 0; i < rayCount; i++) {
+      const angle = (i / rayCount) * Math.PI * 2 + sparklePhase * 0.5;
+      const len = S(30 + Math.sin(sparklePhase * 3 + i) * 15) * sparklePhase;
+      const sx = x + Math.cos(angle) * S(30);
+      const sy = y + Math.sin(angle) * S(30);
+      const ex = x + Math.cos(angle) * (S(30) + len);
+      const ey = y + Math.sin(angle) * (S(30) + len);
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = S(1.5);
+      ctx.globalAlpha = alpha * 0.6 * (1 - i % 2 * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Staircase chart for December
+function drawStaircase(cx, cy, w, h, steps, alpha) {
+  ctx.globalAlpha = alpha;
+  const stepW = w / steps;
+  const prices = [340, 350, 358, 370, 385];
+  const minP = 330, maxP = 395;
+  const getY = (p) => cy + h/2 - ((p - minP) / (maxP - minP)) * h;
+  const startX = cx - w/2;
+
+  for (let i = 0; i < Math.min(steps, prices.length); i++) {
+    const x1 = startX + i * stepW;
+    const x2 = x1 + stepW;
+    const y1 = getY(prices[i]);
+
+    ctx.fillStyle = LIME;
+    ctx.globalAlpha = alpha * (0.15 + i * 0.05);
+    ctx.fillRect(x1, y1, stepW - S(2), cy + h/2 - y1);
+
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = LIME;
+    ctx.lineWidth = S(2);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y1);
+    if (i < prices.length - 1) {
+      ctx.lineTo(x2, getY(prices[i + 1]));
+    }
+    ctx.stroke();
+
+    // Win label
+    ctx.fillStyle = WHITE;
+    ctx.font = `500 ${S(10)}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`W${i+1}`, x1 + stepW/2, cy + h/2 + S(14));
+  }
+  ctx.globalAlpha = 1;
+}
+
+// PnL spinner
+function drawPnLCounter(x, y, targetPnL, progress, alpha) {
+  const displayPnL = targetPnL * easeOutCubic(Math.min(1, progress));
+  const pnlStr = `+$${displayPnL.toFixed(0)}`;
+  const pctStr = `+${(displayPnL / 340 * 100).toFixed(1)}%`;
+  drawMonoText(pnlStr, x, y, 36, LIME, 'center', alpha);
+  drawMonoText(pctStr, x, y + S(40), 20, GOLD, 'center', alpha * 0.8);
+}
+
+// ============ SCENES ============
+
+function scene1_august(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // "August." fades in
+  const textAlpha = easeOutCubic(Math.min(1, t / 0.8));
+  const textY = cy - S(120) + S(20) * (1 - easeOutCubic(Math.min(1, t / 1)));
+  drawText('August.', cx, textY, 52, WHITE, 'center', '700', textAlpha);
+
+  // Card slides up
+  if (t > 0.8) {
+    const cardT = (t - 0.8) / 1.2;
+    const cardAlpha = easeOutCubic(Math.min(1, cardT));
+    const cardSlide = S(40) * (1 - easeOutCubic(Math.min(1, cardT)));
+    const cw = S(340), ch = S(180);
+    const cardX = cx - cw/2;
+    const cardY = cy - S(30) + cardSlide;
+
+    drawCard(cardX, cardY, cw, ch, cardAlpha, LIME);
+
+    // Card content
+    const ca = cardAlpha;
+    drawText('ARSENAL', cardX + S(24), cardY + S(28), 14, '#888', 'left', '500', ca);
+    drawText('LONG', cardX + cw - S(24), cardY + S(28), 12, LIME, 'right', '600', ca);
+
+    // Arsenal badge placeholder — red circle
+    ctx.globalAlpha = ca;
+    ctx.fillStyle = '#ef0107';
+    ctx.beginPath();
+    ctx.arc(cardX + S(40), cardY + S(75), S(22), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = WHITE;
+    ctx.font = `700 ${S(16)}px 'Space Grotesk'`;
+    ctx.textAlign = 'center';
+    ctx.fillText('A', cardX + S(40), cardY + S(77));
+    ctx.globalAlpha = 1;
+
+    drawText('Arsenal FC', cardX + S(80), cardY + S(68), 20, WHITE, 'left', '600', ca);
+
+    // Entry price
+    if (t > 1.5) {
+      const priceT = (t - 1.5) / 0.6;
+      const pa = easeOutCubic(Math.min(1, priceT));
+      drawMonoText('$340.00', cardX + S(80), cardY + S(95), 28, LIME, 'left', pa * ca);
+      drawText('Entry Price', cardX + S(80), cardY + S(125), 12, '#666', 'left', '400', pa * ca * 0.7);
+    }
+
+    // Confidence text
+    if (t > 2.8) {
+      const confT = (t - 2.8) / 0.8;
+      const confA = easeOutCubic(Math.min(1, confT));
+      drawText('Position opened.', cx, cardY + ch + S(40), 16, '#888', 'center', '400', confA);
+    }
+  }
+}
+
+function scene2_october(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // Screen shake during 0.5-2.5
+  if (t > 0.5 && t < 2.5) {
+    applyShake(S(6) * Math.sin(t * 15));
+    if (frame % 3 === 0) spawnRedParticles(3);
+  }
+
+  // "October."
+  const textAlpha = easeOutCubic(Math.min(1, t / 0.6));
+  drawText('October.', cx, cy - S(140), 48, RED, 'center', '700', textAlpha);
+
+  // Price dropping
+  if (t > 0.5) {
+    const dropT = Math.min(1, (t - 0.5) / 1.5);
+    const price = lerp(340, 310, easeOutBounce(dropT));
+    drawMonoText(`$${price.toFixed(0)}`, cx, cy - S(70), 52, RED, 'center', textAlpha);
+
+    // Red flash on drop
+    if (dropT < 0.3) {
+      ctx.globalAlpha = 0.1 * (1 - dropT / 0.3);
+      ctx.fillStyle = RED;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Headlines
+  if (t > 1.5) {
+    const ha = easeOutCubic(Math.min(1, (t - 1.5) / 0.6));
+    drawText('Saka injured. 3 losses in a row.', cx, cy, 18, '#cc3333', 'center', '500', ha);
+  }
+
+  if (t > 2.3) {
+    const sa = easeOutCubic(Math.min(1, (t - 2.3) / 0.6));
+    drawText('"Everyone\'s selling."', cx, cy + S(50), 22, '#ff6666', 'center', '500', sa);
+  }
+
+  // Down arrow
+  if (t > 1) {
+    const aa = 0.3 + 0.3 * Math.sin(t * 4);
+    drawText('\u2193 -8.8%', cx, cy + S(100), 20, RED, 'center', '600', aa);
+  }
+}
+
+function scene3_diamondHands(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // "Your hands?"
+  if (t < 2) {
+    const ta = t < 1 ? easeOutCubic(t / 0.6) : Math.max(0, 1 - (t - 1.5) / 0.5);
+    drawText('Your hands?', cx, cy - S(60), 36, WHITE, 'center', '600', ta);
+  }
+
+  // Diamond emoji burst
+  if (t > 1.2) {
+    const dt2 = t - 1.2;
+    const diamondScale = easeOutElastic(Math.min(1, dt2 / 0.8));
+    const diamondA = Math.min(1, dt2 / 0.5);
+    drawDiamond(cx, cy - S(20), 80 * diamondScale, diamondA, dt2 > 0.3 ? dt2 - 0.3 : 0);
+
+    // Burst particles on appear
+    if (Math.abs(dt2 - 0.1) < 0.02) {
+      spawnParticles(cx, cy - S(20), 40, GOLD, S(5), 50);
+      spawnParticles(cx, cy - S(20), 20, LIME, S(4), 40);
+    }
+  }
+
+  // "HOLD."
+  if (t > 2) {
+    const ha = easeOutElastic(Math.min(1, (t - 2) / 0.8));
+    const holdScale = 0.8 + 0.2 * ha;
+    ctx.save();
+    ctx.translate(cx, cy + S(70));
+    ctx.scale(holdScale, holdScale);
+    drawText('HOLD.', 0, 0, 56, LIME, 'center', '700', ha);
+    drawGlow(0, 0, S(80), LIME, 0.2 * ha);
+    ctx.restore();
+  }
+
+  // Price recovery ticker
+  if (t > 2.8) {
+    const rt = (t - 2.8) / 1.2;
+    const recoverPrice = lerp(310, 340, easeOutCubic(Math.min(1, rt)));
+    const ra = easeOutCubic(Math.min(1, (t - 2.8) / 0.5));
+    drawMonoText(`$${recoverPrice.toFixed(0)}`, cx, cy + S(130), 20, LIME, 'center', ra * 0.7);
+  }
+}
+
+function scene4_december(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  if (frame % 5 === 0 && t > 1) spawnGreenRain(2);
+
+  // "December."
+  const ta = easeOutCubic(Math.min(1, t / 0.6));
+  drawText('December.', cx, cy - S(160), 48, LIME, 'center', '700', ta);
+
+  // Price
+  if (t > 0.5) {
+    const pt = Math.min(1, (t - 0.5) / 2);
+    const price = lerp(340, 385, easeOutCubic(pt));
+    drawMonoText(`$${price.toFixed(0)}`, cx, cy - S(110), 38, LIME, 'center', ta);
+  }
+
+  // "5-match win streak"
+  if (t > 1) {
+    const wa = easeOutCubic(Math.min(1, (t - 1) / 0.5));
+    drawText('5-match win streak', cx, cy - S(70), 18, GOLD, 'center', '500', wa);
+  }
+
+  // Staircase chart
+  if (t > 1.2) {
+    const steps = Math.min(5, Math.floor((t - 1.2) / 0.4) + 1);
+    const sa = easeOutCubic(Math.min(1, (t - 1.2) / 0.5));
+    drawStaircase(cx, cy + S(30), S(300), S(150), steps, sa);
+  }
+}
+
+function scene5_february(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // Confetti bursts
+  if (t > 1 && frame % 10 === 0) {
+    spawnConfetti(cx + (Math.random() - 0.5) * S(300), cy - S(100), 8);
+  }
+
+  // "February."
+  const ta = easeOutCubic(Math.min(1, t / 0.6));
+  drawText('February.', cx, cy - S(160), 48, GOLD, 'center', '700', ta);
+
+  // UCL Run
+  if (t > 0.5) {
+    const ua = easeOutCubic(Math.min(1, (t - 0.5) / 0.5));
+    drawText('UCL run begins.', cx, cy - S(115), 18, '#ddd', 'center', '500', ua);
+  }
+
+  // Price rocket
+  if (t > 0.8) {
+    const pt = Math.min(1, (t - 0.8) / 2);
+    const price = lerp(385, 430, easeOutCubic(pt));
+    const pa = easeOutCubic(Math.min(1, (t - 0.8) / 0.5));
+    drawMonoText(`$${price.toFixed(0)}`, cx, cy - S(50), 48, LIME, 'center', pa);
+
+    // Burst on milestones
+    if (Math.floor(price) === 400 && frame % 60 < 2) {
+      spawnParticles(cx, cy - S(50), 20, GOLD, S(4), 40);
+    }
+    if (Math.floor(price) === 420 && frame % 60 < 2) {
+      spawnParticles(cx, cy - S(50), 25, LIME, S(5), 50);
+    }
+  }
+
+  // PnL counter
+  if (t > 1.5) {
+    const pnlProgress = (t - 1.5) / 2;
+    const pnlA = easeOutCubic(Math.min(1, (t - 1.5) / 0.5));
+    drawPnLCounter(cx, cy + S(40), 90, pnlProgress, pnlA);
+  }
+
+  // Mini chart
+  if (t > 1) {
+    const ca = easeOutCubic(Math.min(1, (t - 1) / 0.8));
+    drawChart(cx, cy + S(130), S(300), S(100), 9, LIME, ca * 0.7, true);
+  }
+}
+
+function scene6_may(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  if (frame % 8 === 0 && t > 0.5) spawnConfetti(cx, cy - S(50), 3);
+
+  // "May."
+  const ta = easeOutCubic(Math.min(1, t / 0.5));
+  drawText('May.', cx, cy - S(200), 52, GOLD, 'center', '700', ta);
+
+  // Final price
+  if (t > 0.5) {
+    const pt = Math.min(1, (t - 0.5) / 1.5);
+    const price = lerp(430, 498, easeOutCubic(pt));
+    const pa = easeOutCubic(Math.min(1, (t - 0.5) / 0.5));
+    drawMonoText(`$${price.toFixed(0)}`, cx, cy - S(145), 52, LIME, 'center', pa);
+    drawGlow(cx, cy - S(145), S(60), LIME, 0.15 * pa);
+  }
+
+  // +46.5%
+  if (t > 1.5) {
+    const perc = easeOutElastic(Math.min(1, (t - 1.5) / 1));
+    const percA = easeOutCubic(Math.min(1, (t - 1.5) / 0.5));
+    ctx.save();
+    ctx.translate(cx, cy - S(85));
+    ctx.scale(0.8 + 0.2 * perc, 0.8 + 0.2 * perc);
+    drawMonoText('+46.5% from entry', 0, 0, 22, GOLD, 'center', percA);
+    ctx.restore();
+
+    if (Math.abs(t - 1.6) < 0.03) {
+      spawnParticles(cx, cy - S(85), 30, GOLD, S(4), 40);
+    }
+  }
+
+  // Full journey chart
+  if (t > 0.8) {
+    const chartIdx = Math.min(11, Math.floor(2 + (t - 0.8) * 4));
+    const ca = easeOutCubic(Math.min(1, (t - 0.8) / 0.6));
+    drawChart(cx, cy + S(40), S(450), S(180), chartIdx, LIME, ca, true);
+
+    // Month labels under chart
+    if (t > 2) {
+      const la = easeOutCubic(Math.min(1, (t - 2) / 0.5));
+      const months = ['Aug', '', 'Oct', '', 'Dec', '', '', 'Feb', '', '', '', 'May'];
+      const chartLeft = cx - S(225);
+      const chartW = S(450);
+      months.forEach((m, i) => {
+        if (m) {
+          const mx = chartLeft + (i / 11) * chartW;
+          drawText(m, mx, cy + S(145), 10, '#666', 'center', '400', la);
+        }
+      });
+    }
+  }
+}
+
+function scene7_comparison(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  const gap = S(20);
+  const cw = S(260);
+  const ch = S(220);
+
+  // Paper Hands card (left)
+  if (t > 0.2) {
+    const lt = (t - 0.2) / 0.8;
+    const la = easeOutCubic(Math.min(1, lt));
+    const lSlide = S(50) * (1 - easeOutCubic(Math.min(1, lt)));
+    const lx = cx - gap/2 - cw - lSlide;
+    const ly = cy - ch/2;
+
+    drawCard(lx, ly, cw, ch, la, RED);
+    drawText('Paper Hands', lx + cw/2, ly + S(30), 18, RED, 'center', '600', la);
+    drawText('\u{1F4C4}', lx + cw/2, ly + S(70), 36, WHITE, 'center', '400', la);
+    drawText('Sold at $310', lx + cw/2, ly + S(110), 16, '#aaa', 'center', '500', la);
+    drawMonoText('-8.8%', lx + cw/2, ly + S(150), 36, RED, 'center', la);
+    drawText('-$30 per share', lx + cw/2, ly + S(185), 13, '#666', 'center', '400', la);
+  }
+
+  // Diamond Hands card (right)
+  if (t > 0.6) {
+    const rt = (t - 0.6) / 0.8;
+    const ra = easeOutCubic(Math.min(1, rt));
+    const rSlide = S(50) * (1 - easeOutCubic(Math.min(1, rt)));
+    const rx = cx + gap/2 + rSlide;
+    const ry = cy - ch/2;
+
+    drawCard(rx, ry, cw, ch, ra, LIME);
+    drawGlow(rx + cw/2, ry + ch/2, S(120), LIME, 0.08 * ra);
+    drawText('Diamond Hands', rx + cw/2, ry + S(30), 18, LIME, 'center', '600', ra);
+    drawDiamond(rx + cw/2, ry + S(70), 36, ra, t * 0.5);
+    drawText('Held to $498', rx + cw/2, ry + S(110), 16, '#aaa', 'center', '500', ra);
+    drawMonoText('+46.5%', rx + cw/2, ry + S(150), 36, LIME, 'center', ra);
+    drawText('+$158 per share', rx + cw/2, ry + S(185), 13, '#888', 'center', '400', ra);
+
+    if (Math.abs(t - 1.5) < 0.03) {
+      spawnParticles(rx + cw/2, ry + ch/2, 25, LIME, S(3), 40);
+    }
+  }
+
+  // VS
+  if (t > 1) {
+    const va = 0.5 + 0.3 * Math.sin(t * 3);
+    drawText('vs', cx, cy, 20, '#555', 'center', '600', va);
+  }
+}
+
+function scene8_finale(t, dt) {
+  // t: 0..4
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  if (frame % 12 === 0 && t > 0.5) spawnConfetti(cx, cy - S(100), 5);
+
+  // Diamond + tagline
+  if (t > 0) {
+    const ta1 = easeOutElastic(Math.min(1, t / 1));
+    drawDiamond(cx, cy - S(110), 60 * ta1, ta1, t * 0.3);
+  }
+
+  if (t > 0.5) {
+    const ta2 = easeOutCubic(Math.min(1, (t - 0.5) / 0.8));
+    drawText('Fortune favors the patient.', cx, cy - S(40), 28, WHITE, 'center', '600', ta2);
+  }
+
+  // Notch brand
+  if (t > 1.2) {
+    const ba = easeOutCubic(Math.min(1, (t - 1.2) / 0.6));
+    drawText('Notch', cx, cy + S(15), 22, LIME, 'center', '700', ba);
+    drawText('Hold your conviction.', cx, cy + S(45), 15, '#888', 'center', '400', ba);
+  }
+
+  // CTA with glow
+  if (t > 2) {
+    const ca = easeOutCubic(Math.min(1, (t - 2) / 0.6));
+    const glowPulse = 0.15 + 0.1 * Math.sin(t * 3);
+    drawGlow(cx, cy + S(95), S(100), LIME, glowPulse * ca);
+    drawMonoText('notch.win', cx, cy + S(95), 24, LIME, 'center', ca);
+  }
+
+  // Watch again button
+  if (t > 2.5) {
+    watchBtn.style.display = 'block';
+    watchBtn.style.opacity = easeOutCubic(Math.min(1, (t - 2.5) / 0.5));
+  }
+}
+
+// ============ MAIN LOOP ============
+
+const scenes = [
+  { start: 0,  dur: 4, fn: scene1_august },
+  { start: 4,  dur: 4, fn: scene2_october },
+  { start: 8,  dur: 4, fn: scene3_diamondHands },
+  { start: 12, dur: 4, fn: scene4_december },
+  { start: 16, dur: 4, fn: scene5_february },
+  { start: 20, dur: 4, fn: scene6_may },
+  { start: 24, dur: 4, fn: scene7_comparison },
+  { start: 28, dur: 4, fn: scene8_finale },
+];
+
+let lastTime = null;
+
+function animate(timestamp) {
+  if (!running) return;
+  if (!lastTime) lastTime = timestamp;
+
+  const elapsed = frame / FPS;
+
+  // Clear
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Apply shake
+  ctx.setTransform(1, 0, 0, 1, shakeX, shakeY);
+  shakeX *= 0.85;
+  shakeY *= 0.85;
+
+  // Find and run active scene
+  for (const scene of scenes) {
+    if (elapsed >= scene.start && elapsed < scene.start + scene.dur) {
+      const localT = elapsed - scene.start;
+      scene.fn(localT, 1 / FPS);
+      break;
+    }
+  }
+
+  // Particles on top
+  updateParticles();
+  drawParticles();
+
+  // Progress bar (reset transform)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (elapsed < TOTAL_DURATION + 2) {
+    drawProgress(Math.min(elapsed, TOTAL_DURATION));
+  }
+
+  frame++;
+
+  if (elapsed < TOTAL_DURATION + 3) {
+    requestAnimationFrame(animate);
+  }
+}
+
+function restart() {
+  frame = 0;
+  lastTime = null;
+  particles = [];
+  confetti = [];
+  shakeX = 0;
+  shakeY = 0;
+  watchBtn.style.display = 'none';
+  running = true;
+  requestAnimationFrame(animate);
+}
+
+// Start
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

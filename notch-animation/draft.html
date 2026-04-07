@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Draft Day</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0c10; overflow: hidden; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+canvas { display: block; }
+#watchAgain {
+  position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+  background: transparent; border: 2px solid #b2ed68; color: #b2ed68;
+  font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600;
+  padding: 12px 32px; border-radius: 8px; cursor: pointer;
+  opacity: 0; pointer-events: none; transition: opacity 0.4s, background 0.2s;
+  z-index: 10;
+}
+#watchAgain:hover { background: #b2ed6822; }
+#watchAgain.visible { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const btn = document.getElementById('watchAgain');
+
+// --- Responsive sizing ---
+let W, H, S;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  S = Math.min(W / 1200, H / 800);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- Easing ---
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) { t -= 1.5/2.75; return 7.5625*t*t + 0.75; }
+  if (t < 2.5/2.75) { t -= 2.25/2.75; return 7.5625*t*t + 0.9375; }
+  t -= 2.625/2.75; return 7.5625*t*t + 0.984375;
+}
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+// --- Teams data ---
+const LIME = '#b2ed68';
+const GOLD = '#fbbf24';
+const teams = [
+  { name: 'Arsenal', ticker: 'ARS', price: 618, alloc: 150, leverage: 'Long 5x', tag: 'Title contenders. Strong form.', color: '#EF0107', fromLeft: true, pnl: 34 },
+  { name: 'Real Madrid', ticker: 'RMA', price: 748, alloc: 100, leverage: 'Long 3x', tag: 'UCL favorites.', color: '#FEBE10', fromLeft: false, pnl: 12 },
+  { name: 'Man United', ticker: 'MUN', price: 540, alloc: 80, leverage: 'Short 5x', tag: 'Rebuild year. Bet against.', color: '#DA291C', fromLeft: true, short: true, pnl: 22 },
+  { name: 'Liverpool', ticker: 'LIV', price: 665, alloc: 100, leverage: 'Long 3x', tag: 'Consistent performers.', color: '#C8102E', fromLeft: false, pnl: 5 },
+  { name: 'Barcelona', ticker: 'BAR', price: 690, alloc: 70, leverage: 'Long 5x', tag: 'New Messi era?', color: '#A50044', fromLeft: true, pnl: 28 },
+];
+
+// Assign pie chart angles
+let totalAlloc = teams.reduce((s, t) => s + t.alloc, 0);
+let runAngle = -Math.PI / 2;
+teams.forEach(t => {
+  t.startAngle = runAngle;
+  t.sweep = (t.alloc / totalAlloc) * Math.PI * 2;
+  runAngle += t.sweep;
+});
+
+// --- Confetti system ---
+let confetti = [];
+function spawnConfetti(cx, cy, count) {
+  const colors = [LIME, GOLD, '#fff', '#EF0107', '#FEBE10', '#A50044', '#C8102E'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 6;
+    confetti.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed * S,
+      vy: Math.sin(angle) * speed * S - 3 * S,
+      w: (3 + Math.random() * 5) * S,
+      h: (6 + Math.random() * 10) * S,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.3,
+      life: 1,
+      decay: 0.005 + Math.random() * 0.01,
+    });
+  }
+}
+function updateConfetti() {
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const c = confetti[i];
+    c.x += c.vx; c.y += c.vy; c.vy += 0.15 * S;
+    c.rot += c.rotV; c.life -= c.decay;
+    if (c.life <= 0) confetti.splice(i, 1);
+  }
+}
+function drawConfetti() {
+  confetti.forEach(c => {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.globalAlpha = c.life;
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+    ctx.restore();
+  });
+}
+
+// --- Drawing helpers ---
+function setFont(size, family, weight) {
+  ctx.font = `${weight || '600'} ${Math.round(size * S)}px '${family || 'Space Grotesk'}', sans-serif`;
+}
+
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawCard(x, y, w, h, team, alpha, showPnl, flipProgress) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  ctx.translate(cx, cy);
+
+  // Flip transform
+  let scaleX = 1;
+  let showBack = false;
+  if (flipProgress !== undefined && flipProgress > 0) {
+    scaleX = Math.abs(Math.cos(flipProgress * Math.PI));
+    if (flipProgress > 0.5) showBack = true;
+  }
+  ctx.scale(scaleX, 1);
+  ctx.translate(-cx, -cy);
+
+  const borderColor = team.short ? '#ff4444' : team.color;
+  const borderW = 3 * S;
+
+  // Card bg
+  drawRoundRect(x, y, w, h, 12 * S);
+  ctx.fillStyle = '#14171e';
+  ctx.fill();
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = borderW;
+  ctx.stroke();
+
+  if (!showBack) {
+    // Front of card
+    // Team color accent bar
+    ctx.fillStyle = team.color;
+    ctx.fillRect(x + borderW, y + borderW, w - borderW * 2, 6 * S);
+
+    // Ticker
+    setFont(28, 'JetBrains Mono', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(team.ticker, cx, y + 42 * S);
+
+    // Team name
+    setFont(14, 'Space Grotesk', '400');
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(team.name, cx, y + 62 * S);
+
+    // Price
+    setFont(22, 'JetBrains Mono', '600');
+    ctx.fillStyle = LIME;
+    ctx.fillText('$' + team.price, cx, y + 92 * S);
+
+    // Leverage badge
+    const levColor = team.short ? '#ff4444' : LIME;
+    setFont(11, 'JetBrains Mono', '600');
+    const levText = team.leverage;
+    const levW = ctx.measureText(levText).width + 16 * S;
+    drawRoundRect(cx - levW/2, y + 100 * S, levW, 22 * S, 4 * S);
+    ctx.fillStyle = levColor + '22';
+    ctx.fill();
+    ctx.strokeStyle = levColor;
+    ctx.lineWidth = 1 * S;
+    ctx.stroke();
+    ctx.fillStyle = levColor;
+    ctx.textAlign = 'center';
+    ctx.fillText(levText, cx, y + 115 * S);
+
+    // Tag
+    setFont(10, 'Space Grotesk', '400');
+    ctx.fillStyle = '#888';
+    ctx.fillText(team.tag, cx, y + 142 * S);
+
+    // Allocation
+    setFont(16, 'JetBrains Mono', '700');
+    ctx.fillStyle = GOLD;
+    ctx.fillText('$' + team.alloc, cx, y + 168 * S);
+    setFont(9, 'Space Grotesk', '400');
+    ctx.fillStyle = '#666';
+    ctx.fillText('allocated', cx, y + 182 * S);
+  } else {
+    // Back of card — PnL
+    const pnlPositive = team.pnl > 0;
+    const pnlColor = pnlPositive ? LIME : '#ff4444';
+
+    // Team color accent bar
+    ctx.fillStyle = team.color;
+    ctx.fillRect(x + borderW, y + borderW, w - borderW * 2, 6 * S);
+
+    setFont(28, 'JetBrains Mono', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(team.ticker, cx, y + 42 * S);
+
+    setFont(14, 'Space Grotesk', '400');
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(team.name, cx, y + 62 * S);
+
+    // PnL number
+    setFont(36, 'JetBrains Mono', '700');
+    ctx.fillStyle = pnlColor;
+    const sign = pnlPositive ? '+' : '';
+    ctx.fillText(sign + team.pnl + '%', cx, y + 108 * S);
+
+    // Dollar gain
+    const gain = Math.round(team.alloc * team.pnl / 100);
+    setFont(16, 'JetBrains Mono', '500');
+    ctx.fillStyle = pnlColor + 'cc';
+    ctx.fillText((gain >= 0 ? '+' : '') + '$' + gain, cx, y + 132 * S);
+
+    if (showPnl) {
+      // Check or cross
+      const iconY = y + 155 * S;
+      const iconSize = 20 * S;
+      if (pnlPositive) {
+        ctx.strokeStyle = LIME;
+        ctx.lineWidth = 3 * S;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - iconSize * 0.4, iconY);
+        ctx.lineTo(cx - iconSize * 0.1, iconY + iconSize * 0.3);
+        ctx.lineTo(cx + iconSize * 0.4, iconY - iconSize * 0.3);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 3 * S;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - iconSize * 0.3, iconY - iconSize * 0.3);
+        ctx.lineTo(cx + iconSize * 0.3, iconY + iconSize * 0.3);
+        ctx.moveTo(cx + iconSize * 0.3, iconY - iconSize * 0.3);
+        ctx.lineTo(cx - iconSize * 0.3, iconY + iconSize * 0.3);
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawPieChart(cx, cy, radius, progress, teamsToShow) {
+  // Background circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a1d26';
+  ctx.fill();
+  ctx.strokeStyle = '#2a2d36';
+  ctx.lineWidth = 2 * S;
+  ctx.stroke();
+
+  // Filled slices
+  const totalSweep = Math.PI * 2 * progress;
+  let drawn = 0;
+  for (let i = 0; i < teamsToShow; i++) {
+    const t = teams[i];
+    const sweep = Math.min(t.sweep, totalSweep - drawn);
+    if (sweep <= 0) break;
+    const start = -Math.PI/2 + drawn;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, start, start + sweep);
+    ctx.closePath();
+    ctx.fillStyle = t.color;
+    ctx.fill();
+    drawn += sweep;
+  }
+
+  // Center circle overlay
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0c10';
+  ctx.fill();
+
+  // Center text
+  const allocShown = Math.round(progress * totalAlloc);
+  setFont(18, 'JetBrains Mono', '700');
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('$' + allocShown, cx, cy - 6 * S);
+  setFont(10, 'Space Grotesk', '400');
+  ctx.fillStyle = '#888';
+  ctx.fillText('of $500', cx, cy + 14 * S);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawProgressBar(progress) {
+  const barH = 4 * S;
+  const barY = H - 16 * S;
+  ctx.fillStyle = '#1a1d26';
+  ctx.fillRect(0, barY, W, barH);
+  ctx.fillStyle = LIME;
+  ctx.fillRect(0, barY, W * progress, barH);
+}
+
+// --- Main animation state ---
+const DURATION = 30;
+let startTime = 0;
+let animating = true;
+let confettiSpawned = false;
+
+function reset() {
+  startTime = performance.now();
+  animating = true;
+  confetti = [];
+  confettiSpawned = false;
+  btn.classList.remove('visible');
+}
+
+btn.addEventListener('click', reset);
+
+function render(now) {
+  if (!animating) { requestAnimationFrame(render); return; }
+
+  const elapsed = (now - startTime) / 1000;
+  const t = Math.min(elapsed / DURATION, 1);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Subtle background grid
+  ctx.globalAlpha = 0.03;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  const gridSize = 40 * S;
+  for (let gx = 0; gx < W; gx += gridSize) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+  }
+  for (let gy = 0; gy < H; gy += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // ============================================================
+  // PHASE 1: 0-4s — Title + empty chart
+  // ============================================================
+  if (elapsed < 4) {
+    const p1 = clamp01(elapsed / 0.8);
+    const titleAlpha = easeOutCubic(p1);
+
+    ctx.globalAlpha = titleAlpha;
+    setFont(56, 'Space Grotesk', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    const titleY = cy - 80 * S;
+    ctx.fillText('DRAFT YOUR PORTFOLIO', cx, titleY);
+
+    const p2 = clamp01((elapsed - 0.5) / 0.6);
+    ctx.globalAlpha = easeOutCubic(p2);
+    setFont(18, 'JetBrains Mono', '400');
+    ctx.fillStyle = GOLD;
+    ctx.fillText('$500 budget. 98 teams. Choose wisely.', cx, titleY + 50 * S);
+
+    // Empty pie chart fades in
+    const p3 = clamp01((elapsed - 1.5) / 1.0);
+    ctx.globalAlpha = easeOutCubic(p3);
+    drawPieChart(cx, cy + 100 * S, 80 * S, 0, 0);
+    ctx.globalAlpha = 1;
+  }
+
+  // ============================================================
+  // PHASE 2: 4-10s — Draft picks dealt one by one
+  // ============================================================
+  if (elapsed >= 4 && elapsed < 10) {
+    const phaseT = elapsed - 4; // 0-6
+    const pickDuration = 1.2;
+    const cardW = 160 * S;
+    const cardH = 200 * S;
+    const cardGap = 20 * S;
+
+    // Pick counter
+    const currentPick = Math.min(Math.floor(phaseT / pickDuration), 4);
+
+    // Title header
+    setFont(20, 'Space Grotesk', '600');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 0.7;
+    ctx.fillText('DRAFTING...', cx, 40 * S);
+    ctx.globalAlpha = 1;
+
+    // Pick number
+    setFont(14, 'JetBrains Mono', '500');
+    ctx.fillStyle = LIME;
+    ctx.fillText('PICK ' + (currentPick + 1) + ' of 5', cx, 62 * S);
+
+    // Draw dealt cards stacking toward center
+    const activeCardX = cx - cardW / 2;
+    const activeCardY = cy - cardH / 2 - 20 * S;
+
+    for (let i = 0; i <= currentPick && i < 5; i++) {
+      const pickStart = i * pickDuration;
+      const pickElapsed = phaseT - pickStart;
+      const slideP = clamp01(pickElapsed / 0.5);
+      const slideEased = easeOutCubic(slideP);
+
+      const team = teams[i];
+      const offscreen = team.fromLeft ? -cardW - 50 * S : W + 50 * S;
+      const stackOffset = (i - currentPick) * 12 * S;
+
+      if (i < currentPick) {
+        // Already dealt — stacked behind, smaller
+        const stackX = activeCardX + stackOffset;
+        const stackY = activeCardY + stackOffset;
+        ctx.globalAlpha = 0.3 + (i / currentPick) * 0.3;
+        drawCard(stackX, stackY, cardW, cardH, team, ctx.globalAlpha, false);
+      } else {
+        // Active card sliding in
+        const startX = offscreen;
+        const currentX = lerp(startX, activeCardX, slideEased);
+        const alphaP = clamp01(pickElapsed / 0.3);
+        drawCard(currentX, activeCardY, cardW, cardH, team, easeOutCubic(alphaP), false);
+      }
+    }
+
+    // Pie chart
+    const pieCx = cx + 260 * S;
+    const pieCy = cy + 10 * S;
+    const pieR = 80 * S;
+
+    let pieProgress = 0;
+    for (let i = 0; i <= currentPick && i < 5; i++) {
+      const pickStart = i * pickDuration;
+      const pickElapsed = phaseT - pickStart;
+      const fillP = clamp01((pickElapsed - 0.3) / 0.5);
+      pieProgress += (teams[i].alloc / totalAlloc) * easeOutCubic(fillP);
+    }
+    drawPieChart(pieCx, pieCy, pieR, pieProgress, currentPick + 1);
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ============================================================
+  // PHASE 3: 10-15s — "YOUR ROSTER IS SET" — all 5 cards spread
+  // ============================================================
+  if (elapsed >= 10 && elapsed < 15) {
+    const phaseT = elapsed - 10; // 0-5
+
+    // Title
+    const titleP = clamp01(phaseT / 0.6);
+    ctx.globalAlpha = easeOutElastic(titleP);
+    setFont(40, 'Space Grotesk', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('YOUR ROSTER IS SET.', cx, 60 * S);
+    ctx.globalAlpha = 1;
+
+    // 5 cards spread like a hand
+    const cardW = 140 * S;
+    const cardH = 185 * S;
+    const totalW = 5 * cardW + 4 * 15 * S;
+    const startX = cx - totalW / 2;
+    const baseY = cy - cardH / 2 + 30 * S;
+
+    const spreadP = clamp01((phaseT - 0.3) / 0.8);
+    const spreadEased = easeOutCubic(spreadP);
+
+    for (let i = 0; i < 5; i++) {
+      const targetX = startX + i * (cardW + 15 * S);
+      const fromX = cx - cardW / 2;
+      const cardX = lerp(fromX, targetX, spreadEased);
+      const fanAngle = lerp(0, (i - 2) * 0.05, spreadEased);
+      const fanY = baseY + Math.abs(i - 2) * 8 * S * spreadEased;
+
+      ctx.save();
+      ctx.translate(cardX + cardW/2, fanY + cardH/2);
+      ctx.rotate(fanAngle);
+      ctx.translate(-(cardX + cardW/2), -(fanY + cardH/2));
+      drawCard(cardX, fanY, cardW, cardH, teams[i], 1, false);
+      ctx.restore();
+    }
+
+    // Completed pie chart
+    const pieCx = cx;
+    const pieCy = H - 90 * S;
+    const pieR = 50 * S;
+    drawPieChart(pieCx, pieCy, pieR, 1, 5);
+
+    setFont(14, 'JetBrains Mono', '500');
+    ctx.fillStyle = GOLD;
+    ctx.textAlign = 'center';
+    ctx.fillText('$500 deployed across 5 teams', cx, H - 30 * S);
+  }
+
+  // ============================================================
+  // PHASE 4: 15-20s — "6 MONTHS LATER" — cards flip to PnL
+  // ============================================================
+  if (elapsed >= 15 && elapsed < 20) {
+    const phaseT = elapsed - 15; // 0-5
+
+    // Flash text
+    if (phaseT < 1.5) {
+      const flashP = clamp01(phaseT / 0.5);
+      const fadeP = clamp01((phaseT - 1.0) / 0.5);
+      ctx.globalAlpha = easeOutCubic(flashP) * (1 - easeOutCubic(fadeP));
+      setFont(48, 'Space Grotesk', '700');
+      ctx.fillStyle = GOLD;
+      ctx.textAlign = 'center';
+      ctx.fillText('6 MONTHS LATER', cx, cy);
+      ctx.globalAlpha = 1;
+    }
+
+    // Cards flip one by one after flash
+    if (phaseT >= 1.5) {
+      const cardW = 140 * S;
+      const cardH = 185 * S;
+      const totalW = 5 * cardW + 4 * 15 * S;
+      const startX = cx - totalW / 2;
+      const baseY = cy - cardH / 2 + 10 * S;
+
+      setFont(24, 'Space Grotesk', '700');
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.globalAlpha = 0.6;
+      ctx.fillText('RESULTS', cx, 40 * S);
+      ctx.globalAlpha = 1;
+
+      const flipDelay = 0.5;
+      for (let i = 0; i < 5; i++) {
+        const cardX = startX + i * (cardW + 15 * S);
+        const flipStart = 1.5 + i * flipDelay;
+        const flipElapsed = phaseT - flipStart;
+        const flipP = clamp01(flipElapsed / 0.6);
+        const fanY = baseY + Math.abs(i - 2) * 8 * S;
+
+        const showCheck = flipP >= 1;
+        drawCard(cardX, fanY, cardW, cardH, teams[i], 1, showCheck, easeOutCubic(flipP));
+      }
+    }
+  }
+
+  // ============================================================
+  // PHASE 5: 20-24s — Portfolio PnL calculation + confetti
+  // ============================================================
+  if (elapsed >= 20 && elapsed < 24) {
+    const phaseT = elapsed - 20; // 0-4
+
+    // Individual gains stack
+    const lineH = 36 * S;
+    const startY = cy - 130 * S;
+
+    setFont(24, 'Space Grotesk', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('PORTFOLIO RETURNS', cx, startY - 30 * S);
+
+    for (let i = 0; i < 5; i++) {
+      const lineDelay = i * 0.3;
+      const lineP = clamp01((phaseT - lineDelay) / 0.4);
+      if (lineP <= 0) continue;
+      const lineAlpha = easeOutCubic(lineP);
+      const lineY = startY + i * lineH + 20 * S;
+      const gain = Math.round(teams[i].alloc * teams[i].pnl / 100);
+
+      ctx.globalAlpha = lineAlpha;
+
+      // Team ticker
+      setFont(16, 'JetBrains Mono', '600');
+      ctx.textAlign = 'left';
+      ctx.fillStyle = teams[i].color;
+      ctx.fillText(teams[i].ticker, cx - 180 * S, lineY);
+
+      // Allocation
+      setFont(14, 'JetBrains Mono', '400');
+      ctx.fillStyle = '#888';
+      ctx.fillText('$' + teams[i].alloc, cx - 80 * S, lineY);
+
+      // Arrow
+      ctx.fillStyle = '#555';
+      ctx.fillText('\u2192', cx - 20 * S, lineY);
+
+      // Pnl %
+      const pnlColor = teams[i].pnl > 0 ? LIME : '#ff4444';
+      setFont(16, 'JetBrains Mono', '700');
+      ctx.fillStyle = pnlColor;
+      ctx.textAlign = 'left';
+      const sign = teams[i].pnl > 0 ? '+' : '';
+      ctx.fillText(sign + teams[i].pnl + '%', cx + 20 * S, lineY);
+
+      // Dollar gain
+      setFont(14, 'JetBrains Mono', '500');
+      ctx.fillStyle = pnlColor + 'cc';
+      ctx.textAlign = 'right';
+      ctx.fillText((gain >= 0 ? '+$' : '-$') + Math.abs(gain), cx + 180 * S, lineY);
+    }
+
+    // Total line
+    const totalDelay = 2.0;
+    const totalP = clamp01((phaseT - totalDelay) / 0.6);
+    if (totalP > 0) {
+      const totalAlpha = easeOutElastic(totalP);
+      ctx.globalAlpha = totalAlpha;
+
+      const totalY = startY + 5 * lineH + 50 * S;
+
+      // Divider
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1 * S;
+      ctx.beginPath();
+      ctx.moveTo(cx - 180 * S, totalY - 20 * S);
+      ctx.lineTo(cx + 180 * S, totalY - 20 * S);
+      ctx.stroke();
+
+      setFont(32, 'JetBrains Mono', '700');
+      ctx.fillStyle = LIME;
+      ctx.textAlign = 'center';
+      ctx.fillText('$500 \u2192 $743', cx, totalY + 10 * S);
+
+      setFont(22, 'JetBrains Mono', '700');
+      ctx.fillStyle = LIME;
+      ctx.fillText('+48.6% portfolio return', cx, totalY + 45 * S);
+
+      // Confetti
+      if (!confettiSpawned && totalP > 0.5) {
+        spawnConfetti(cx, totalY, 120);
+        confettiSpawned = true;
+      }
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ============================================================
+  // PHASE 6: 24-28s — Philosophy text
+  // ============================================================
+  if (elapsed >= 24 && elapsed < 28) {
+    const phaseT = elapsed - 24; // 0-4
+
+    const line1P = clamp01(phaseT / 0.8);
+    ctx.globalAlpha = easeOutCubic(line1P);
+    setFont(30, 'Space Grotesk', '600');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('You didn\'t bet.', cx, cy - 50 * S);
+
+    const line2P = clamp01((phaseT - 0.5) / 0.8);
+    ctx.globalAlpha = easeOutCubic(line2P);
+    setFont(30, 'Space Grotesk', '700');
+    ctx.fillStyle = LIME;
+    ctx.fillText('You built a portfolio.', cx, cy);
+
+    const line3P = clamp01((phaseT - 1.5) / 0.6);
+    ctx.globalAlpha = easeOutCubic(line3P);
+    setFont(18, 'JetBrains Mono', '400');
+    ctx.fillStyle = GOLD;
+    ctx.fillText('5 picks. 1 strategy. All season.', cx, cy + 60 * S);
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ============================================================
+  // PHASE 7: 28-30s — FINALE CTA
+  // ============================================================
+  if (elapsed >= 28) {
+    const phaseT = elapsed - 28; // 0-2
+
+    const p1 = clamp01(phaseT / 0.6);
+    ctx.globalAlpha = easeOutElastic(p1);
+    setFont(48, 'Space Grotesk', '700');
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText('Draft yours on', cx, cy - 30 * S);
+
+    setFont(56, 'Space Grotesk', '700');
+    ctx.fillStyle = LIME;
+    ctx.fillText('Notch', cx, cy + 35 * S);
+
+    const p2 = clamp01((phaseT - 0.4) / 0.5);
+    ctx.globalAlpha = easeOutCubic(p2);
+    setFont(22, 'JetBrains Mono', '500');
+    ctx.fillStyle = GOLD;
+    ctx.fillText('notch.win', cx, cy + 80 * S);
+
+    ctx.globalAlpha = 1;
+
+    // Show watch again button
+    if (phaseT >= 1.0) {
+      btn.classList.add('visible');
+    }
+
+    if (elapsed >= DURATION) {
+      animating = false;
+    }
+  }
+
+  // --- Confetti (global) ---
+  updateConfetti();
+  drawConfetti();
+
+  // --- Progress bar ---
+  drawProgressBar(t);
+
+  requestAnimationFrame(render);
+}
+
+// Start
+startTime = performance.now();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

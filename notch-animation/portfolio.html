@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Portfolio Season</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0c10; overflow: hidden; font-family: 'Space Grotesk', sans-serif; }
+canvas { display: block; }
+#watchAgain {
+  display: none; position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: transparent; border: 1px solid rgba(178,237,104,0.5); color: #b2ed68;
+  font-family: 'Space Grotesk', sans-serif; font-size: 16px; padding: 12px 32px;
+  border-radius: 8px; cursor: pointer; z-index: 10; transition: all 0.3s;
+}
+#watchAgain:hover { background: rgba(178,237,104,0.1); border-color: #b2ed68; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain" onclick="restart()">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const watchBtn = document.getElementById('watchAgain');
+
+let W, H, dpr, scale;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  scale = Math.min(W / 1200, H / 800);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Easing functions
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function easeOutQuart(t) { return 1 - Math.pow(1-t, 4); }
+
+// Teams data
+const teams = [
+  { name: 'Arsenal', ticker: 'ARS', side: 'LONG', lev: '5x', price: 618, color: '#EF0107', pnl: 21, pnlLabel: '+21%', win: true },
+  { name: 'Real Madrid', ticker: 'RMA', side: 'LONG', lev: '3x', price: 748, color: '#FEBE10', pnl: 8, pnlLabel: '+8%', win: true },
+  { name: 'Man United', ticker: 'MUN', side: 'SHORT', lev: '2x', price: 540, color: '#DA291C', pnl: 15, pnlLabel: '+15%', win: true },
+  { name: 'Barcelona', ticker: 'BAR', side: 'LONG', lev: '5x', price: 690, color: '#A50044', pnl: 18, pnlLabel: '+18%', win: true },
+  { name: 'Liverpool', ticker: 'LIV', side: 'LONG', lev: '3x', price: 665, color: '#C8102E', pnl: -3, pnlLabel: '-3%', win: false },
+];
+
+// Chart data — price paths for each team across season
+const months = ['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+const chartPaths = [
+  [618, 625, 640, 660, 685, 700, 710, 725, 738, 748],  // ARS climbs
+  [748, 755, 730, 760, 770, 745, 780, 795, 800, 808],  // RMA volatile
+  [540, 535, 520, 510, 495, 480, 475, 468, 462, 459],  // MUN drops (short profits)
+  [690, 695, 710, 720, 735, 750, 770, 790, 805, 814],  // BAR climbs
+  [665, 670, 675, 660, 655, 650, 660, 655, 648, 645],  // LIV steady slight loss
+];
+
+// Particles system
+let particles = [];
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6 - 2,
+      life: 1, decay: 0.01 + Math.random() * 0.02, size: 2 + Math.random() * 3, color
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Confetti system
+let confetti = [];
+function spawnConfetti(count) {
+  const colors = ['#b2ed68', '#EF0107', '#FEBE10', '#A50044', '#C8102E', '#ffffff'];
+  for (let i = 0; i < count; i++) {
+    confetti.push({
+      x: Math.random() * W, y: -20 - Math.random() * 200,
+      vx: (Math.random() - 0.5) * 3, vy: 1.5 + Math.random() * 3,
+      rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.2,
+      w: 4 + Math.random() * 6, h: 8 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1, decay: 0.003 + Math.random() * 0.003
+    });
+  }
+}
+
+function updateConfetti() {
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const c = confetti[i];
+    c.x += c.vx; c.y += c.vy; c.rot += c.rotV;
+    c.vx += (Math.random() - 0.5) * 0.1;
+    c.life -= c.decay;
+    if (c.life <= 0 || c.y > H + 20) confetti.splice(i, 1);
+  }
+}
+
+function drawConfetti() {
+  for (const c of confetti) {
+    ctx.save();
+    ctx.globalAlpha = c.life;
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Background grid
+function drawGrid(alpha) {
+  ctx.globalAlpha = alpha * 0.04;
+  ctx.strokeStyle = '#b2ed68';
+  ctx.lineWidth = 0.5;
+  const gs = 50 * scale;
+  for (let x = 0; x < W; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Progress bar
+function drawProgressBar(progress) {
+  const bh = 3 * scale;
+  ctx.fillStyle = 'rgba(178,237,104,0.1)';
+  ctx.fillRect(0, H - bh, W, bh);
+  ctx.fillStyle = '#b2ed68';
+  ctx.fillRect(0, H - bh, W * progress, bh);
+}
+
+// Text helpers
+function drawText(text, x, y, size, color, alpha, font, align) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color || '#ffffff';
+  ctx.font = `${font || '600'} ${size * scale}px 'Space Grotesk', sans-serif`;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawMono(text, x, y, size, color, alpha, align) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color || '#b2ed68';
+  ctx.font = `500 ${size * scale}px 'JetBrains Mono', monospace`;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawGlow(x, y, radius, color, alpha) {
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  ctx.globalAlpha = 1;
+}
+
+// Animation state
+const TOTAL_DURATION = 30;
+const FPS = 60;
+let frame = 0;
+let startTime = 0;
+let running = true;
+let slotParticlesSpawned = [false,false,false,false,false];
+let confettiSpawned = false;
+
+function restart() {
+  frame = 0;
+  startTime = performance.now();
+  running = true;
+  particles = [];
+  confetti = [];
+  slotParticlesSpawned = [false,false,false,false,false];
+  confettiSpawned = false;
+  watchBtn.style.display = 'none';
+  requestAnimationFrame(loop);
+}
+
+function getTime() {
+  return (performance.now() - startTime) / 1000;
+}
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function mapRange(val, a, b, c, d) { return c + (val - a) / (b - a) * (d - c); }
+
+function drawSlot(x, y, w, h, team, fillProgress, alpha) {
+  ctx.globalAlpha = alpha;
+  const s = fillProgress;
+
+  // Card background
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  const r = 8 * scale;
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, r);
+  ctx.fill();
+  ctx.stroke();
+
+  if (s > 0) {
+    // Team color bar at top
+    const barH = 4 * scale;
+    ctx.fillStyle = team.color;
+    ctx.globalAlpha = alpha * s;
+    ctx.beginPath();
+    ctx.roundRect(x - w/2, y - h/2, w * s, barH, [r, s >= 0.99 ? r : 0, 0, 0]);
+    ctx.fill();
+
+    const contentAlpha = alpha * clamp((s - 0.3) / 0.7, 0, 1);
+
+    // Ticker
+    drawMono(team.ticker, x, y - h/2 + 24 * scale, 16, '#ffffff', contentAlpha);
+    // Side + Leverage
+    const sideColor = team.side === 'SHORT' ? '#ff6b6b' : '#b2ed68';
+    drawMono(team.side + ' ' + team.lev, x, y - h/2 + 44 * scale, 11, sideColor, contentAlpha);
+    // Price
+    drawMono('$' + team.price, x, y - h/2 + 66 * scale, 14, '#ffffff', contentAlpha * 0.7);
+  } else {
+    // Empty slot indicator
+    ctx.globalAlpha = alpha * 0.2;
+    ctx.strokeStyle = 'rgba(178,237,104,0.3)';
+    ctx.setLineDash([4 * scale, 4 * scale]);
+    ctx.beginPath();
+    ctx.roundRect(x - w/2 + 4, y - h/2 + 4, w - 8, h - 8, r);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// Draw multi-line chart
+function drawChart(cx, cy, cw, ch, progress, alpha) {
+  ctx.globalAlpha = alpha;
+
+  // Chart background
+  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(cx, cy, cw, ch, 10 * scale);
+  ctx.fill();
+  ctx.stroke();
+
+  const pad = { left: 60 * scale, right: 30 * scale, top: 30 * scale, bottom: 40 * scale };
+  const plotX = cx + pad.left;
+  const plotY = cy + pad.top;
+  const plotW = cw - pad.left - pad.right;
+  const plotH = ch - pad.top - pad.bottom;
+
+  // Find data range
+  let minVal = Infinity, maxVal = -Infinity;
+  for (const path of chartPaths) {
+    for (const v of path) { minVal = Math.min(minVal, v); maxVal = Math.max(maxVal, v); }
+  }
+  minVal -= 20; maxVal += 20;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const gy = plotY + plotH * i / 4;
+    ctx.beginPath(); ctx.moveTo(plotX, gy); ctx.lineTo(plotX + plotW, gy); ctx.stroke();
+    const val = Math.round(lerp(maxVal, minVal, i / 4));
+    drawMono('$' + val, plotX - 10 * scale, gy, 9, 'rgba(255,255,255,0.3)', alpha, 'right');
+  }
+
+  // Month labels
+  const numPoints = months.length;
+  const visiblePoints = Math.floor(progress * numPoints) + 1;
+  for (let i = 0; i < numPoints; i++) {
+    const px = plotX + (i / (numPoints - 1)) * plotW;
+    const a = i < visiblePoints ? alpha : alpha * 0.2;
+    drawMono(months[i], px, plotY + plotH + 20 * scale, 9, 'rgba(255,255,255,0.4)', a);
+  }
+
+  // Draw lines
+  for (let t = 0; t < teams.length; t++) {
+    const path = chartPaths[t];
+    const team = teams[t];
+    ctx.strokeStyle = team.color;
+    ctx.lineWidth = 2.5 * scale;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const drawPoints = Math.min(visiblePoints, path.length);
+    if (drawPoints < 2) continue;
+
+    ctx.beginPath();
+    for (let i = 0; i < drawPoints; i++) {
+      const px = plotX + (i / (numPoints - 1)) * plotW;
+      const py = plotY + plotH - ((path[i] - minVal) / (maxVal - minVal)) * plotH;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.stroke();
+
+    // Glow dot at end
+    if (drawPoints >= 2) {
+      const lastI = drawPoints - 1;
+      const lx = plotX + (lastI / (numPoints - 1)) * plotW;
+      const ly = plotY + plotH - ((path[lastI] - minVal) / (maxVal - minVal)) * plotH;
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.beginPath();
+      ctx.arc(lx, ly, 4 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = team.color;
+      ctx.fill();
+      drawGlow(lx, ly, 15 * scale, team.color, alpha * 0.3);
+    }
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// PnL cards
+function drawPnlCard(x, y, w, h, team, progress, alpha) {
+  const s = easeOutElastic(clamp(progress, 0, 1));
+  ctx.save();
+  ctx.translate(x + w/2, y + h/2);
+  ctx.scale(s, s);
+  ctx.translate(-(x + w/2), -(y + h/2));
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = team.win ? 'rgba(178,237,104,0.2)' : 'rgba(255,107,107,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8 * scale);
+  ctx.fill();
+  ctx.stroke();
+
+  // Team color dot
+  ctx.fillStyle = team.color;
+  ctx.beginPath();
+  ctx.arc(x + 16 * scale, y + h/2, 5 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ticker
+  drawMono(team.ticker, x + 36 * scale, y + h/2 - 10 * scale, 13, '#fff', alpha, 'left');
+  // Side label
+  const sideStr = team.side === 'SHORT' ? 'SHORT' : 'LONG';
+  drawMono(sideStr, x + 36 * scale, y + h/2 + 10 * scale, 9, 'rgba(255,255,255,0.4)', alpha, 'left');
+
+  // PnL
+  const pnlColor = team.win ? '#b2ed68' : '#ff6b6b';
+  const icon = team.win ? '\u2713' : '';
+  drawMono(team.pnlLabel + (team.win ? ' \u2713' : ''), x + w - 16 * scale, y + h/2, 15, pnlColor, alpha, 'right');
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// Comparison chart (single line vs portfolio)
+function drawComparisonChart(x, y, w, h, progress, alpha) {
+  ctx.globalAlpha = alpha;
+
+  // Two panels
+  const gap = 30 * scale;
+  const pw = (w - gap) / 2;
+
+  // Left panel — single team volatile line
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.strokeStyle = 'rgba(255,107,107,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, pw, h, 8 * scale);
+  ctx.fill();
+  ctx.stroke();
+
+  drawText('One team, one bet', x + pw/2, y - 20 * scale, 14, 'rgba(255,255,255,0.7)', alpha);
+
+  // Volatile line
+  const pts1 = [];
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40;
+    const v = Math.sin(t * 8) * 30 + Math.sin(t * 15) * 15 + (t - 0.5) * 20;
+    pts1.push(v);
+  }
+  const padIn = 20 * scale;
+  const drawPts = Math.floor(progress * 40) + 1;
+  ctx.strokeStyle = '#ff6b6b';
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  for (let i = 0; i < drawPts; i++) {
+    const px = x + padIn + (i / 40) * (pw - 2 * padIn);
+    const py = y + h/2 - pts1[i] * scale * 0.6;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  drawMono('"You need THAT team to win."', x + pw/2, y + h - 16 * scale, 9, 'rgba(255,255,255,0.4)', alpha * clamp(progress - 0.5, 0, 1) * 2);
+
+  // Right panel — smooth portfolio line
+  const rx = x + pw + gap;
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.strokeStyle = 'rgba(178,237,104,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(rx, y, pw, h, 8 * scale);
+  ctx.fill();
+  ctx.stroke();
+
+  drawText('A portfolio', rx + pw/2, y - 20 * scale, 14, 'rgba(255,255,255,0.7)', alpha);
+
+  const pts2 = [];
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40;
+    const v = t * 40 + Math.sin(t * 5) * 5;
+    pts2.push(v - 20);
+  }
+  ctx.strokeStyle = '#b2ed68';
+  ctx.lineWidth = 2.5 * scale;
+  ctx.beginPath();
+  for (let i = 0; i < drawPts; i++) {
+    const px = rx + padIn + (i / 40) * (pw - 2 * padIn);
+    const py = y + h/2 - pts2[i] * scale * 0.6;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  drawMono('"You need football to be football."', rx + pw/2, y + h - 16 * scale, 9, '#b2ed68', alpha * clamp(progress - 0.5, 0, 1) * 2);
+
+  ctx.globalAlpha = 1;
+}
+
+function loop() {
+  const t = getTime();
+  if (t > TOTAL_DURATION + 0.5) {
+    running = false;
+    watchBtn.style.display = 'block';
+  }
+  if (!running) return;
+
+  // Clear
+  ctx.fillStyle = '#0a0c10';
+  ctx.fillRect(0, 0, W, H);
+
+  const progress = clamp(t / TOTAL_DURATION, 0, 1);
+
+  // Background grid
+  drawGrid(clamp(t / 2, 0, 1));
+
+  // Ambient glow
+  drawGlow(W * 0.3, H * 0.3, 300 * scale, 'rgba(178,237,104,0.03)', 1);
+  drawGlow(W * 0.7, H * 0.6, 250 * scale, 'rgba(239,1,7,0.02)', 1);
+
+  // ============ PHASE 1: 0-4s — Title + empty slots ============
+  if (t < 10) {
+    const titleAlpha = easeOutCubic(clamp(t / 1.5, 0, 1));
+    const titleY = H * 0.22 + (1 - easeOutCubic(clamp(t / 1.5, 0, 1))) * 30;
+
+    // Fade out after phase 1 slots fill
+    const fadeOut = t > 8 ? 1 - clamp((t - 8) / 1.5, 0, 1) : 1;
+
+    drawText('Build your roster.', W/2, titleY, 42, '#ffffff', titleAlpha * fadeOut, '700');
+
+    const sub1Alpha = easeOutCubic(clamp((t - 1) / 1.2, 0, 1));
+    drawText('Not fantasy. Real money.', W/2, titleY + 50 * scale, 18, '#b2ed68', sub1Alpha * fadeOut, '400');
+
+    // Slots
+    const slotsAlpha = easeOutCubic(clamp((t - 2.5) / 1, 0, 1));
+    const slotW = 130 * scale;
+    const slotH = 85 * scale;
+    const slotGap = 16 * scale;
+    const totalW = teams.length * slotW + (teams.length - 1) * slotGap;
+    const slotStartX = W/2 - totalW/2 + slotW/2;
+    const slotY = H * 0.52;
+
+    for (let i = 0; i < teams.length; i++) {
+      const sx = slotStartX + i * (slotW + slotGap);
+      // Phase 2: teams fill in from 4-9s, each one delayed
+      const fillStart = 4 + i * 1.0;
+      const fillP = easeOutElastic(clamp((t - fillStart) / 0.8, 0, 1));
+
+      // Spawn particles when slot fills
+      if (t >= fillStart + 0.2 && !slotParticlesSpawned[i]) {
+        slotParticlesSpawned[i] = true;
+        spawnParticles(sx, slotY, teams[i].color, 15);
+        spawnParticles(sx, slotY, '#b2ed68', 8);
+      }
+
+      drawSlot(sx, slotY, slotW, slotH, teams[i], fillP > 0.01 ? fillP : 0, slotsAlpha * fadeOut);
+    }
+  }
+
+  // ============ PHASE 3: 10-16s — Multi-line chart ============
+  if (t >= 9.5 && t < 20) {
+    const phaseIn = easeOutCubic(clamp((t - 9.5) / 1.5, 0, 1));
+    const fadeOut = t > 18 ? 1 - clamp((t - 18) / 1.5, 0, 1) : 1;
+    const alpha = phaseIn * fadeOut;
+
+    // Title
+    const titleA = easeOutCubic(clamp((t - 9.5) / 1, 0, 1)) * fadeOut;
+    drawText('THE SEASON PLAYS OUT', W/2, H * 0.08, 28, '#ffffff', titleA, '700');
+
+    // Chart
+    const chartW = Math.min(900 * scale, W * 0.85);
+    const chartH = Math.min(380 * scale, H * 0.55);
+    const chartX = W/2 - chartW/2;
+    const chartY = H * 0.15;
+    const chartProgress = clamp((t - 10.5) / 5, 0, 1);
+
+    drawChart(chartX, chartY, chartW, chartH, chartProgress, alpha);
+
+    // Legend below chart
+    const legY = chartY + chartH + 20 * scale;
+    const legAlpha = alpha * clamp((t - 11) / 1, 0, 1);
+    const legW = chartW / 5;
+    for (let i = 0; i < teams.length; i++) {
+      const lx = chartX + legW * i + legW / 2;
+      ctx.globalAlpha = legAlpha;
+      ctx.fillStyle = teams[i].color;
+      ctx.beginPath();
+      ctx.arc(lx - 20 * scale, legY, 4 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      drawMono(teams[i].ticker, lx, legY, 10, '#fff', legAlpha);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ============ PHASE 4: 16-20s — PnL cards ============
+  if (t >= 15.5 && t < 24) {
+    const phaseIn = easeOutCubic(clamp((t - 15.5) / 1, 0, 1));
+    const fadeOut = t > 22 ? 1 - clamp((t - 22) / 1.5, 0, 1) : 1;
+    const alpha = phaseIn * fadeOut;
+
+    drawText('SEASON RESULTS', W/2, H * 0.1, 24, '#ffffff', alpha * easeOutCubic(clamp((t - 15.5) / 1, 0, 1)), '600');
+
+    // PnL cards
+    const cardW = Math.min(260 * scale, W * 0.22);
+    const cardH = 56 * scale;
+    const cardGap = 10 * scale;
+    const colW = cardW + 20 * scale;
+    // Layout: 3 on left, 2 on right
+    const leftX = W/2 - colW - 20 * scale;
+    const rightX = W/2 + 20 * scale;
+    const startY = H * 0.2;
+
+    for (let i = 0; i < teams.length; i++) {
+      const cardStart = 16 + i * 0.35;
+      const p = clamp((t - cardStart) / 0.6, 0, 1);
+      const cx = i < 3 ? leftX : rightX;
+      const row = i < 3 ? i : i - 3;
+      const cy = startY + row * (cardH + cardGap);
+      drawPnlCard(cx, cy, cardW, cardH, teams[i], p, alpha);
+    }
+
+    // Net portfolio summary
+    const sumAlpha = alpha * easeOutCubic(clamp((t - 17.5) / 1, 0, 1));
+    const sumY = startY + 3 * (cardH + cardGap) + 20 * scale;
+
+    // Summary box
+    ctx.globalAlpha = sumAlpha;
+    const sumW = Math.min(500 * scale, W * 0.45);
+    const sumX = W/2 - sumW/2;
+    ctx.fillStyle = 'rgba(178,237,104,0.05)';
+    ctx.strokeStyle = 'rgba(178,237,104,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(sumX, sumY, sumW, 70 * scale, 10 * scale);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    drawText('NET PORTFOLIO', W/2, sumY + 18 * scale, 12, 'rgba(255,255,255,0.5)', sumAlpha, '500');
+    drawMono('+14.2%', W/2 - 60 * scale, sumY + 48 * scale, 26, '#b2ed68', sumAlpha);
+    drawMono('$500 \u2192 +$71', W/2 + 70 * scale, sumY + 48 * scale, 16, 'rgba(255,255,255,0.6)', sumAlpha);
+
+    if (t > 17.5 && !confettiSpawned) {
+      confettiSpawned = true;
+      spawnConfetti(80);
+    }
+  }
+
+  // ============ PHASE 5: 20-24s — Comparison ============
+  if (t >= 19.5 && t < 26) {
+    const phaseIn = easeOutCubic(clamp((t - 19.5) / 1.2, 0, 1));
+    const fadeOut = t > 24.5 ? 1 - clamp((t - 24.5) / 1, 0, 1) : 1;
+    const alpha = phaseIn * fadeOut;
+
+    const compW = Math.min(800 * scale, W * 0.8);
+    const compH = Math.min(260 * scale, H * 0.35);
+    const compX = W/2 - compW/2;
+    const compY = H * 0.25;
+
+    const chartP = easeInOutCubic(clamp((t - 20) / 3, 0, 1));
+    drawComparisonChart(compX, compY, compW, compH, chartP, alpha);
+  }
+
+  // ============ PHASE 6: 24-28s — Taglines + stats ============
+  if (t >= 23.5 && t < 30) {
+    const phaseIn = easeOutCubic(clamp((t - 23.5) / 1.2, 0, 1));
+    const fadeOut = t > 27.5 ? 1 - clamp((t - 27.5) / 1, 0, 1) : 1;
+    const alpha = phaseIn * fadeOut;
+
+    const line1A = easeOutCubic(clamp((t - 24) / 1, 0, 1)) * fadeOut;
+    const line2A = easeOutCubic(clamp((t - 24.8) / 1, 0, 1)) * fadeOut;
+
+    drawText('Hedge your fandom.', W/2, H * 0.28, 36, '#ffffff', line1A, '700');
+    drawText('Diversify your conviction.', W/2, H * 0.36, 22, '#b2ed68', line2A, '400');
+
+    // Stats row
+    const statsA = easeOutCubic(clamp((t - 25.5) / 1, 0, 1)) * fadeOut;
+    const stats = [
+      { val: '5', label: 'TEAMS' },
+      { val: '1', label: 'PORTFOLIO' },
+      { val: '0%', label: 'HOUSE EDGE' },
+    ];
+    const statW = 160 * scale;
+    const statStartX = W/2 - (stats.length * statW) / 2 + statW/2;
+    const statY = H * 0.52;
+
+    for (let i = 0; i < stats.length; i++) {
+      const sx = statStartX + i * statW;
+      const delay = i * 0.2;
+      const sa = statsA * easeOutElastic(clamp((t - 25.5 - delay) / 0.8, 0, 1));
+
+      drawMono(stats[i].val, sx, statY, 40, '#b2ed68', sa);
+      drawText(stats[i].label, sx, statY + 35 * scale, 12, 'rgba(255,255,255,0.5)', sa, '500');
+
+      // Divider
+      if (i < stats.length - 1) {
+        ctx.globalAlpha = sa * 0.15;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx + statW/2, statY - 25 * scale);
+        ctx.lineTo(sx + statW/2, statY + 45 * scale);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // ============ PHASE 7: 28-30s — CTA ============
+  if (t >= 27) {
+    const phaseIn = easeOutCubic(clamp((t - 27.5) / 1.5, 0, 1));
+
+    // Big glow behind
+    const glowPulse = 0.5 + 0.5 * Math.sin(t * 3);
+    drawGlow(W/2, H * 0.42, 200 * scale, 'rgba(178,237,104,0.08)', phaseIn * (0.5 + glowPulse * 0.5));
+
+    // notch.win
+    const ctaScale = easeOutElastic(clamp((t - 28) / 1, 0, 1));
+    ctx.save();
+    ctx.translate(W/2, H * 0.42);
+    ctx.scale(ctaScale, ctaScale);
+
+    // Text glow
+    ctx.shadowColor = '#b2ed68';
+    ctx.shadowBlur = 30 * scale;
+    ctx.fillStyle = '#b2ed68';
+    ctx.font = `700 ${56 * scale}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = phaseIn;
+    ctx.fillText('notch.win', 0, 0);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // Subtitle
+    const subA = phaseIn * easeOutCubic(clamp((t - 28.8) / 1, 0, 1));
+    drawText('Trade teams like stocks.', W/2, H * 0.52, 16, 'rgba(255,255,255,0.5)', subA, '400');
+
+    // Spawn final confetti
+    if (t > 28.5 && confetti.length < 50) {
+      spawnConfetti(3);
+    }
+  }
+
+  // Update and draw particles/confetti
+  updateParticles();
+  drawParticles();
+  updateConfetti();
+  drawConfetti();
+
+  // Progress bar
+  drawProgressBar(progress);
+
+  requestAnimationFrame(loop);
+}
+
+// Start
+startTime = performance.now();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

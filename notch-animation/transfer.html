@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Transfer Window</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;overflow:hidden;font-family:'Space Grotesk',sans-serif}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#bar{position:fixed;bottom:0;left:0;height:3px;background:#b2ed68;z-index:10}
+#again{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#b2ed68;color:#000;border:none;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;padding:12px 28px;border-radius:99px;cursor:pointer;opacity:0;transition:opacity .6s;pointer-events:none;z-index:10}
+#again.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<button id="again" onclick="location.reload()">Watch again</button>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d'),bar=document.getElementById('bar'),btn=document.getElementById('again');
+let W,H,cx,cy;
+function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;C.width=W*d;C.height=H*d;X.scale(d,d)}
+resize();addEventListener('resize',resize);
+
+// Easing functions
+const eo=t=>1-Math.pow(1-t,3),
+  ei=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,
+  el=t=>t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-.75)*2.094)+1,
+  eb=t=>{const n=7.5625,d=2.75;if(t<1/d)return n*t*t;if(t<2/d)return n*(t-=1.5/d)*t+.75;if(t<2.5/d)return n*(t-=2.25/d)*t+.9375;return n*(t-=2.625/d)*t+.984375};
+
+// Colors
+const L='#b2ed68',R='#ff4d4d',WH='#fff',DM='#555',BD='#1c1e24',BG='#0a0c10';
+
+// Teams
+const TEAMS={
+  ARS:{tick:'ARS',name:'Arsenal FC',price:412,color:'#EF0107'},
+  BAR:{tick:'BAR',name:'FC Barcelona',price:389,color:'#A50044'},
+  RMA:{tick:'RMA',name:'Real Madrid CF',price:445,color:'#FEBE10'},
+  MCI:{tick:'MCI',name:'Manchester City',price:378,color:'#6CABDD'},
+  LIV:{tick:'LIV',name:'Liverpool FC',price:367,color:'#C8102E'},
+  PSG:{tick:'PSG',name:'Paris Saint-Germain',price:334,color:'#004170'},
+  BAY:{tick:'BAY',name:'FC Bayern',price:401,color:'#DC052D'},
+  CHE:{tick:'CHE',name:'Chelsea FC',price:356,color:'#034694'},
+};
+
+// Particles
+let parts=[];
+class P{constructor(x,y,c,vx,vy,l,sz){this.x=x;this.y=y;this.c=c;this.vx=vx;this.vy=vy;this.l=l;this.ml=l;this.s=sz||2}
+update(){this.x+=this.vx;this.y+=this.vy;this.vy+=.02;this.l--}
+draw(){const a=this.l/this.ml;X.globalAlpha=a;X.fillStyle=this.c;X.beginPath();X.arc(this.x,this.y,Math.max(0,this.s*a),0,Math.PI*2);X.fill();X.globalAlpha=1}}
+function burst(x,y,c,n=50){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*6;parts.push(new P(x,y,c,Math.cos(a)*sp,Math.sin(a)*sp-2,35+Math.random()*30,1.5+Math.random()*3))}}
+function confetti(x,y,n=80){const cs=[L,'#60a5fa','#a78bfa','#f472b6','#fbbf24',WH];for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=2+Math.random()*8;parts.push(new P(x,y,cs[i%cs.length],Math.cos(a)*sp,Math.sin(a)*sp-5,50+Math.random()*40,2+Math.random()*3))}}
+function sparkRain(x,y,w,n=20){for(let i=0;i<n;i++){parts.push(new P(x+Math.random()*w,y,L,(Math.random()-.5)*.5,Math.random()*1+.5,40+Math.random()*30,1+Math.random()*1.5))}}
+
+// Drawing helpers
+function txt(t,x,y,{sz=40,c=WH,a=1,w='700',al='center',m=false}={}){X.globalAlpha=a;X.fillStyle=c;X.font=`${w} ${sz}px '${m?'JetBrains Mono':'Space Grotesk'}',sans-serif`;X.textAlign=al;X.textBaseline='middle';X.fillText(t,x,y);X.globalAlpha=1}
+function rr(x,y,w,h,r,f,s,sw=1){X.beginPath();X.roundRect(x,y,w,h,r);if(f){X.fillStyle=f;X.fill()}if(s){X.strokeStyle=s;X.lineWidth=sw;X.stroke()}}
+function glow(x,y,r,c){if(!isFinite(x)||!isFinite(y)||!isFinite(r)||r<=0)return;const g=X.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,c+'40');g.addColorStop(1,c+'00');X.fillStyle=g;X.fillRect(x-r,y-r,r*2,r*2)}
+
+// Sparkline generator
+function sparkline(x,y,w,h,data,prog,color,lw=2){
+  const n=Math.floor(prog*(data.length-1));
+  if(n<1)return;
+  X.beginPath();
+  for(let i=0;i<=n;i++){
+    const px=x+(i/(data.length-1))*w;
+    const py=y+h-(data[i]/(Math.max(...data)))*h*.85-h*.05;
+    if(i===0)X.moveTo(px,py);else X.lineTo(px,py);
+  }
+  X.strokeStyle=color;X.lineWidth=lw;X.lineCap='round';X.lineJoin='round';X.stroke();
+
+  // glow under
+  const last=n;
+  const lx=x+(last/(data.length-1))*w;
+  const ly=y+h-(data[last]/(Math.max(...data)))*h*.85-h*.05;
+  X.beginPath();
+  for(let i=0;i<=n;i++){
+    const px=x+(i/(data.length-1))*w;
+    const py=y+h-(data[i]/(Math.max(...data)))*h*.85-h*.05;
+    if(i===0)X.moveTo(px,py);else X.lineTo(px,py);
+  }
+  X.lineTo(lx,y+h);X.lineTo(x,y+h);X.closePath();
+  const grad=X.createLinearGradient(0,y,0,y+h);
+  grad.addColorStop(0,color+'30');grad.addColorStop(1,color+'00');
+  X.fillStyle=grad;X.fill();
+}
+
+// Generate price data that rises
+function genRise(start,end,steps){
+  const d=[];let v=start;
+  for(let i=0;i<steps;i++){
+    const t=i/(steps-1);
+    const target=start+(end-start)*t;
+    v+=(target-v)*.15+(Math.random()-.45)*3;
+    v=Math.max(start*.95,v);
+    d.push(v);
+  }
+  d[d.length-1]=end;
+  return d;
+}
+function genFlat(base,steps){
+  const d=[];let v=base;
+  for(let i=0;i<steps;i++){v+=+(Math.random()-.5)*2;d.push(v)}return d;
+}
+
+const arsData=genRise(412,458,40);
+const psgData=genRise(334,371,40);
+const barData=genRise(389,425,40);
+const livData=genFlat(367,40);
+const fullArsData=genRise(340,458,60);
+
+// Floating team logos (circle badges)
+const floaters=Object.values(TEAMS).map((t,i)=>({
+  ...t,
+  x:Math.random(),y:Math.random(),
+  vx:(Math.random()-.5)*.0003,vy:(Math.random()-.5)*.0003,
+  phase:Math.random()*Math.PI*2
+}));
+
+// scrolling ticker
+function drawTicker(y,speed,alpha,time,headlines){
+  X.globalAlpha=alpha;
+  const items=headlines||['TRANSFER WINDOW OPEN','BREAKING: MAJOR DEALS INCOMING','JANUARY WINDOW','CLUBS MAKING MOVES','NOTCH MARKETS LIVE'];
+  const totalW=items.length*400;
+  const offset=-(time*speed)%totalW;
+  for(let rep=-1;rep<3;rep++){
+    items.forEach((s,i)=>{
+      const sx=offset+rep*totalW+i*400;
+      if(sx<-400||sx>W+400)return;
+      txt(s,sx,y,{sz:14,c:L,m:true,w:'700',al:'left'});
+    });
+  }
+  X.globalAlpha=1;
+}
+
+const DUR=28000;
+let t0=null,gT=0;
+function gt(s,d){return Math.max(0,Math.min(1,(gT-s)/d))}
+
+// Track burst events so they fire once
+const firedOnce={};
+function once(key,fn){if(!firedOnce[key]){firedOnce[key]=true;fn()}}
+
+function render(ts){
+  if(!t0)t0=ts;gT=ts-t0;
+  bar.style.width=(Math.min(1,gT/DUR)*100)+'%';
+  X.clearRect(0,0,W,H);X.fillStyle=BG;X.fillRect(0,0,W,H);
+  parts=parts.filter(p=>p.l>0);parts.forEach(p=>{p.update();p.draw()});
+  const s=Math.min(W,H)/900;
+
+  // subtle grid
+  X.globalAlpha=.012;X.strokeStyle=WH;X.lineWidth=.5;
+  for(let x=0;x<W;x+=60){X.beginPath();X.moveTo(x,0);X.lineTo(x,H);X.stroke()}
+  for(let y=0;y<H;y+=60){X.beginPath();X.moveTo(0,y);X.lineTo(W,y);X.stroke()}
+  X.globalAlpha=1;
+
+  // ═══ SCENE 1: BREAKING NEWS (0-4s) ═══
+  if(gT<4500){
+    const t=gt(0,4000),fo=gT>3500?1-(gT-3500)/1000:1;
+
+    // Floating team badges
+    floaters.forEach((f,i)=>{
+      f.x+=f.vx;f.y+=f.vy;
+      if(f.x<0||f.x>1)f.vx*=-1;
+      if(f.y<0||f.y>1)f.vy*=-1;
+      const fx=f.x*W,fy=f.y*H;
+      const bob=Math.sin(gT*.002+f.phase)*8;
+      const ba=eo(Math.min(1,t*3))*fo*.3;
+      X.globalAlpha=ba;
+      X.fillStyle=f.color;X.beginPath();X.arc(fx,fy+bob,22*s,0,Math.PI*2);X.fill();
+      X.globalAlpha=ba*.9;
+      txt(f.tick,fx,fy+bob,{sz:Math.round(9*s),c:'#000',m:true,w:'700'});
+      X.globalAlpha=1;
+    });
+
+    // Ticker tapes
+    if(t>.05){
+      const ta=eo(Math.min(1,(t-.05)/.2))*fo;
+      drawTicker(50*s,.1,ta*.5,gT);
+      drawTicker(H-50*s,.07,ta*.4,gT+3000);
+    }
+
+    // BREAKING NEWS flash
+    if(t>.1){
+      const flash=el(Math.min(1,(t-.1)/.2));
+      const pulse=.85+Math.sin(gT*.008)*.15;
+
+      // red banner
+      const banH=60*s;
+      X.globalAlpha=flash*fo*.9;
+      rr(0,cy-banH/2-40*s,W,banH,0,R+'20');
+      X.globalAlpha=1;
+
+      // BREAKING glow
+      glow(cx,cy-40*s,200*s,R);
+
+      txt('BREAKING',cx,cy-60*s,{sz:Math.round(18*s),c:R,a:flash*fo*pulse,m:true,w:'700'});
+      txt('TRANSFER WINDOW OPEN',cx,cy-25*s,{sz:Math.round(48*s),c:WH,a:flash*fo});
+    }
+
+    // sub text
+    if(t>.45){
+      const st=eo((t-.45)/.2)*fo;
+      txt('January 2025',cx,cy+30*s,{sz:Math.round(20*s),c:DM,a:st,w:'500'});
+      txt('Markets are moving.',cx,cy+60*s,{sz:Math.round(20*s),c:L,a:st*.8,w:'600'});
+    }
+  }
+
+  // ═══ SCENE 2: MBAPPE TO ARSENAL (4-9s) ═══
+  if(gT>3500&&gT<9500){
+    const t=gt(4000,5000),fi=eo(Math.min(1,t*3)),fo=t>.9?1-(t-.9)/.1:1,a=fi*fo;
+
+    // Deal card
+    if(t>.0){
+      const cardW=Math.min(480*s,W-40),cardH=120*s;
+      const cardX=cx-cardW/2,cardY=cy-180*s;
+      const ct=el(Math.min(1,t/.15));
+
+      X.globalAlpha=ct*a;
+      rr(cardX,cardY,cardW,cardH,12,'#10131a',BD,1.5);
+      // red left accent
+      X.fillStyle=TEAMS.ARS.color;X.fillRect(cardX,cardY,5,cardH);
+      X.globalAlpha=1;
+
+      // "DEAL CONFIRMED" badge
+      const badgeY=cardY+20*s;
+      X.globalAlpha=ct*a;
+      rr(cardX+18*s,badgeY-10*s,130*s,20*s,10,R+'25',R,1);
+      X.globalAlpha=1;
+      txt('DEAL CONFIRMED',cardX+83*s,badgeY,{sz:Math.round(10*s),c:R,a:ct*a,m:true,w:'700'});
+
+      // Player name and arrow
+      if(t>.08){
+        const nt=eo(Math.min(1,(t-.08)/.12));
+        txt('Mbapp\u00e9',cardX+30*s,cardY+55*s,{sz:Math.round(28*s),c:WH,a:nt*a,w:'800',al:'left'});
+
+        // arrow
+        const arrowX=cardX+170*s,arrowW=60*s*nt;
+        X.globalAlpha=nt*a;X.strokeStyle=L;X.lineWidth=2.5;
+        X.beginPath();X.moveTo(arrowX,cardY+55*s);X.lineTo(arrowX+arrowW,cardY+55*s);
+        X.lineTo(arrowX+arrowW-8,cardY+48*s);X.moveTo(arrowX+arrowW,cardY+55*s);
+        X.lineTo(arrowX+arrowW-8,cardY+62*s);X.stroke();X.globalAlpha=1;
+
+        // Arsenal badge
+        X.globalAlpha=nt*a;
+        X.fillStyle=TEAMS.ARS.color;X.beginPath();X.arc(cardX+260*s,cardY+55*s,16*s,0,Math.PI*2);X.fill();
+        txt('ARS',cardX+260*s,cardY+55*s,{sz:Math.round(9*s),c:'#000',a:nt*a,m:true,w:'700'});
+        X.globalAlpha=1;
+
+        txt('Arsenal',cardX+285*s,cardY+55*s,{sz:Math.round(22*s),c:TEAMS.ARS.color,a:nt*a,w:'700',al:'left'});
+      }
+
+      // Fee
+      if(t>.15){
+        const ft=el(Math.min(1,(t-.15)/.1));
+        rr(cardX+cardW-120*s,cardY+75*s,105*s,30*s,8,L+'15',L+'40',1);
+        txt('$120M',cardX+cardW-68*s,cardY+90*s,{sz:Math.round(18*s),c:L,a:ft*a,m:true,w:'700'});
+        once('dealBurst',()=>burst(cardX+cardW-68*s,cardY+90*s,L,40));
+      }
+    }
+
+    // Price chart - Arsenal climbing
+    if(t>.2){
+      const chartProg=eo(Math.min(1,(t-.2)/.6));
+      const chartW=Math.min(480*s,W-40),chartH=180*s;
+      const chartX=cx-chartW/2,chartY=cy-30*s;
+
+      X.globalAlpha=a*.85;
+      rr(chartX-10,chartY-30*s,chartW+20,chartH+65*s,10,'#0c0f16',BD);
+      X.globalAlpha=1;
+
+      // chart header
+      X.globalAlpha=a;
+      X.fillStyle=TEAMS.ARS.color;X.beginPath();X.arc(chartX+14*s,chartY-12*s,8*s,0,Math.PI*2);X.fill();
+      txt('ARS',chartX+14*s,chartY-12*s,{sz:Math.round(7*s),c:'#000',a,m:true,w:'700'});
+      X.globalAlpha=1;
+      txt('Arsenal FC',chartX+32*s,chartY-12*s,{sz:Math.round(14*s),c:WH,a,w:'600',al:'left'});
+
+      // live price
+      const priceIdx=Math.floor(chartProg*(arsData.length-1));
+      const curPrice=arsData[priceIdx]||412;
+      const priceStr='$'+curPrice.toFixed(0);
+      const chgPct=((curPrice-412)/412*100).toFixed(1);
+      txt(priceStr,chartX+chartW-10*s,chartY-12*s,{sz:Math.round(20*s),c:L,a,m:true,w:'700',al:'right'});
+      if(t>.3)txt('+'+chgPct+'%',chartX+chartW-10*s,chartY+10*s,{sz:Math.round(12*s),c:L,a:a*.7,m:true,w:'500',al:'right'});
+
+      // draw sparkline
+      X.globalAlpha=a;
+      sparkline(chartX+10,chartY+25*s,chartW-20,chartH-25*s,arsData,chartProg,L,2.5);
+      X.globalAlpha=1;
+
+      // price axis labels
+      X.globalAlpha=a*.3;
+      txt('$412',chartX-2,chartY+chartH,{sz:Math.round(9*s),c:DM,m:true,al:'left'});
+      txt('$458',chartX-2,chartY+30*s,{sz:Math.round(9*s),c:DM,m:true,al:'left'});
+      X.globalAlpha=1;
+
+      // blinking live dot
+      if(chartProg>.1){
+        const lx=chartX+10+chartProg*(chartW-20);
+        const ly=chartY+25*s+chartH-25*s-(arsData[priceIdx]/(Math.max(...arsData)))*(chartH-25*s)*.85-(chartH-25*s)*.05;
+        const pulse=.5+Math.sin(gT*.01)*.5;
+        glow(lx,ly,20*s,L);
+        X.globalAlpha=a;X.fillStyle=L;X.beginPath();X.arc(lx,ly,3*s,0,Math.PI*2);X.fill();
+        X.globalAlpha=a*pulse;X.beginPath();X.arc(lx,ly,7*s,0,Math.PI*2);X.strokeStyle=L;X.lineWidth=1;X.stroke();
+        X.globalAlpha=1;
+      }
+
+      if(chartProg>.8){
+        once('chartBurst',()=>burst(cx,chartY+50*s,L,30));
+      }
+    }
+  }
+
+  // ═══ SCENE 3: POSITION CARD (9-14s) ═══
+  if(gT>8500&&gT<14500){
+    const t=gt(9000,5000),fi=eo(Math.min(1,t*3)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    // Position card
+    if(t>.0){
+      const cardW=Math.min(520*s,W-30),cardH=200*s;
+      const cardX=cx-cardW/2,cardY=cy-120*s;
+      const ct=el(Math.min(1,t/.15));
+
+      // Card background with green border glow
+      glow(cx,cardY+cardH/2,300*s,L);
+      X.globalAlpha=ct*a;
+      rr(cardX,cardY,cardW,cardH,14,'#10131a',L+'50',2);
+      X.globalAlpha=1;
+
+      // "YOUR POSITION" header
+      rr(cardX+15*s,cardY+12*s,140*s,24*s,12,L+'20',L+'40',1);
+      txt('YOUR POSITION',cardX+85*s,cardY+24*s,{sz:Math.round(10*s),c:L,a:ct*a,m:true,w:'700'});
+
+      // LONG badge
+      if(t>.05){
+        const lt=eo(Math.min(1,(t-.05)/.1));
+        rr(cardX+165*s,cardY+12*s,60*s,24*s,12,L,null);
+        txt('LONG',cardX+195*s,cardY+24*s,{sz:Math.round(10*s),c:'#000',a:lt*a,m:true,w:'700'});
+      }
+
+      // Arsenal details
+      if(t>.08){
+        const dt=eo(Math.min(1,(t-.08)/.12));
+        X.globalAlpha=dt*a;
+        X.fillStyle=TEAMS.ARS.color;X.beginPath();X.arc(cardX+35*s,cardY+62*s,14*s,0,Math.PI*2);X.fill();
+        txt('ARS',cardX+35*s,cardY+62*s,{sz:Math.round(9*s),c:'#000',m:true,w:'700'});
+        X.globalAlpha=1;
+
+        txt('Arsenal FC',cardX+60*s,cardY+58*s,{sz:Math.round(20*s),c:WH,a:dt*a,w:'700',al:'left'});
+
+        // Entry & Current
+        txt('Entry: $340',cardX+60*s,cardY+78*s,{sz:Math.round(12*s),c:DM,a:dt*a,m:true,w:'500',al:'left'});
+        txt('Current: $458',cardX+170*s,cardY+78*s,{sz:Math.round(12*s),c:L,a:dt*a,m:true,w:'500',al:'left'});
+      }
+
+      // BIG PnL
+      if(t>.18){
+        const pt=el(Math.min(1,(t-.18)/.15));
+        const pnlY=cardY+120*s;
+
+        txt('+34.7%',cx,pnlY,{sz:Math.round(52*s),c:L,a:pt*a,w:'800'});
+
+        once('pnlBurst',()=>{
+          confetti(cx,pnlY,100);
+          burst(cx-80*s,pnlY,L,30);
+          burst(cx+80*s,pnlY,L,30);
+        });
+      }
+
+      // Mini chart in card
+      if(t>.12){
+        const mp=eo(Math.min(1,(t-.12)/.4));
+        X.globalAlpha=a*.6;
+        sparkline(cardX+cardW-160*s,cardY+15*s,140*s,55*s,fullArsData,mp,L,1.5);
+        X.globalAlpha=1;
+      }
+    }
+
+    // Narrative text below
+    if(t>.35){
+      const nt=eo(Math.min(1,(t-.35)/.15));
+      txt('You opened this in August.',cx,cy+110*s,{sz:Math.round(22*s),c:WH,a:nt*a,w:'500'});
+    }
+    if(t>.45){
+      const nt2=eo(Math.min(1,(t-.45)/.15));
+      txt('It\'s January. Still printing.',cx,cy+145*s,{sz:Math.round(22*s),c:L,a:nt2*a,w:'700'});
+    }
+  }
+
+  // ═══ SCENE 4: CONTRAST - SPORTSBOOK vs NOTCH (14-18s) ═══
+  if(gT>13500&&gT<18500){
+    const t=gt(14000,4000),fi=eo(Math.min(1,t*3)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    const halfW=Math.min(240*s,W/2-30);
+    const cardH=260*s;
+    const gap=20*s;
+    const leftX=cx-halfW-gap/2;
+    const rightX=cx+gap/2;
+    const topY=cy-cardH/2;
+
+    // VS divider
+    if(t>.1){
+      const va=eo(Math.min(1,(t-.1)/.15))*a;
+      X.globalAlpha=va*.3;X.strokeStyle=DM;X.lineWidth=1;X.setLineDash([4,4]);
+      X.beginPath();X.moveTo(cx,topY-20*s);X.lineTo(cx,topY+cardH+20*s);X.stroke();
+      X.setLineDash([]);X.globalAlpha=1;
+      txt('VS',cx,topY-35*s,{sz:Math.round(14*s),c:DM,a:va,w:'700'});
+    }
+
+    // LEFT: Sportsbook (dead)
+    if(t>.05){
+      const lt=eo(Math.min(1,(t-.05)/.2));
+      X.globalAlpha=lt*a;
+      rr(leftX,topY,halfW,cardH,12,'#0e1016',DM+'30',1);
+      X.globalAlpha=1;
+
+      // header
+      rr(leftX,topY,halfW,36*s,[12,12,0,0],'#131620');
+      txt('SPORTSBOOK',leftX+halfW/2,topY+18*s,{sz:Math.round(11*s),c:DM,a:lt*a,m:true,w:'700'});
+
+      // Sleeping icon (zzz)
+      const zzY=topY+100*s;
+      const zzPulse=.5+Math.sin(gT*.003)*.5;
+      txt('ZZZ',leftX+halfW/2,zzY,{sz:Math.round(36*s),c:DM+'60',a:lt*a*zzPulse,w:'800'});
+
+      // NO ACTIVE BETS
+      txt('NO ACTIVE BETS',leftX+halfW/2,zzY+55*s,{sz:Math.round(13*s),c:R+'90',a:lt*a,m:true,w:'700'});
+      txt('Season break',leftX+halfW/2,zzY+78*s,{sz:Math.round(12*s),c:DM,a:lt*a*.6,w:'400'});
+
+      // flat/dead line
+      X.globalAlpha=lt*a*.3;
+      X.strokeStyle=DM;X.lineWidth=1;X.beginPath();
+      X.moveTo(leftX+20*s,zzY+120*s);X.lineTo(leftX+halfW-20*s,zzY+120*s);X.stroke();
+      X.globalAlpha=1;
+
+      // X icon
+      txt('\u2715',leftX+halfW/2,zzY+150*s,{sz:Math.round(24*s),c:R+'50',a:lt*a});
+    }
+
+    // RIGHT: Notch (alive, pumping)
+    if(t>.15){
+      const rt=el(Math.min(1,(t-.15)/.2));
+      const glowPulse=.7+Math.sin(gT*.005)*.3;
+
+      glow(rightX+halfW/2,topY+cardH/2,150*s,L);
+      X.globalAlpha=rt*a;
+      rr(rightX,topY,halfW,cardH,12,'#0e1016',L+'40',1.5);
+      X.globalAlpha=1;
+
+      // header
+      X.globalAlpha=rt*a;
+      rr(rightX,topY,halfW,36*s,[12,12,0,0],L+'15');
+      X.globalAlpha=1;
+      txt('NOTCH',rightX+halfW/2,topY+18*s,{sz:Math.round(11*s),c:L,a:rt*a,m:true,w:'700'});
+
+      // blinking dot
+      if(Math.sin(gT*.006)>.0){X.globalAlpha=rt*a;X.fillStyle=L;X.beginPath();X.arc(rightX+12*s,topY+18*s,3*s,0,Math.PI*2);X.fill();X.globalAlpha=1}
+
+      // LIVE chart
+      const chartY=topY+50*s,chartH2=120*s;
+      const chartProg=Math.min(1,(t-.15)/.6);
+      X.globalAlpha=rt*a;
+      sparkline(rightX+15*s,chartY,halfW-30*s,chartH2,arsData,eo(chartProg),L,2);
+      X.globalAlpha=1;
+
+      // Labels
+      txt('ARS  $458',rightX+halfW/2,chartY+chartH2+20*s,{sz:Math.round(13*s),c:L,a:rt*a,m:true,w:'700'});
+      txt('+11.2%',rightX+halfW/2,chartY+chartH2+40*s,{sz:Math.round(11*s),c:L,a:rt*a*.7,m:true,w:'500'});
+
+      // "LIVE" badge
+      rr(rightX+halfW-55*s,topY+45*s,45*s,18*s,9,L+'20',L+'50',1);
+      txt('LIVE',rightX+halfW-33*s,topY+54*s,{sz:Math.round(8*s),c:L,a:rt*a*glowPulse,m:true,w:'700'});
+
+      // checkmark
+      txt('\u2713',rightX+halfW/2,chartY+chartH2+70*s,{sz:Math.round(24*s),c:L,a:rt*a});
+
+      // continuous sparks
+      if(Math.random()<.06)parts.push(new P(rightX+Math.random()*halfW,topY+50*s+Math.random()*120*s,L,(Math.random()-.5)*1.5,-Math.random()*1,25,1.5));
+    }
+
+    // Bottom text
+    if(t>.6){
+      const bt=eo(Math.min(1,(t-.6)/.15))*a;
+      txt('They sleep. You earn.',cx,topY+cardH+40*s,{sz:Math.round(24*s),c:WH,a:bt,w:'700'});
+    }
+  }
+
+  // ═══ SCENE 5: CASCADE OF TRANSFERS (18-22s) ═══
+  if(gT>17500&&gT<22500){
+    const t=gt(18000,4000),fi=eo(Math.min(1,t*3)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    const transfers=[
+      {player:'Salah',from:'LIV',to:'PSG',fee:'$95M',teamKey:'PSG',data:psgData,chg:'+11.1%'},
+      {player:'Haaland',from:'MCI',to:'BAR',fee:'$180M',teamKey:'BAR',data:barData,chg:'+9.3%'},
+      {player:'Palmer',from:'CHE',to:'BAY',fee:'$110M',teamKey:'BAY',data:genRise(401,438,40),chg:'+9.2%'},
+    ];
+
+    // Header
+    if(t>.0){
+      const ht=eo(Math.min(1,t/.15))*a;
+      txt('TRANSFER CASCADE',cx,cy-220*s,{sz:Math.round(14*s),c:L,a:ht,m:true,w:'700'});
+      txt('Every deal moves a market.',cx,cy-195*s,{sz:Math.round(28*s),c:WH,a:ht,w:'700'});
+    }
+
+    // Transfer cards in grid
+    const cardW=Math.min(280*s,W/2-20),cardH=130*s;
+    const cols=Math.min(3,Math.floor(W/(cardW+15)));
+    const startX=cx-(cols*(cardW+15*s)-15*s)/2;
+
+    transfers.forEach((tr,i)=>{
+      const delay=.1+i*.12;
+      if(t>delay){
+        const ct=el(Math.min(1,(t-delay)/.18));
+        const col=i%cols,row=Math.floor(i/cols);
+        const tx=startX+col*(cardW+15*s);
+        const ty=cy-140*s+row*(cardH+15*s);
+        const team=TEAMS[tr.teamKey]||TEAMS.ARS;
+
+        X.globalAlpha=ct*a;
+        rr(tx,ty,cardW,cardH,10,'#10131a',BD,1);
+        X.fillStyle=team.color;X.fillRect(tx,ty,4,cardH);
+        X.globalAlpha=1;
+
+        // Player + arrow + team
+        txt(tr.player,tx+15*s,ty+22*s,{sz:Math.round(18*s),c:WH,a:ct*a,w:'700',al:'left'});
+        txt(tr.from+' \u2192 '+tr.to,tx+15*s,ty+42*s,{sz:Math.round(11*s),c:DM,a:ct*a,m:true,w:'500',al:'left'});
+
+        // Fee
+        rr(tx+cardW-70*s,ty+10*s,60*s,22*s,6,L+'15',L+'40',1);
+        txt(tr.fee,tx+cardW-40*s,ty+21*s,{sz:Math.round(10*s),c:L,a:ct*a,m:true,w:'700'});
+
+        // Mini chart
+        const chartProg=Math.min(1,(t-delay-.1)/.4);
+        if(chartProg>0){
+          X.globalAlpha=ct*a;
+          sparkline(tx+10*s,ty+55*s,cardW-20*s,50*s,tr.data,eo(chartProg),L,1.5);
+          X.globalAlpha=1;
+        }
+
+        // change
+        txt(tr.chg,tx+cardW-15*s,ty+115*s,{sz:Math.round(14*s),c:L,a:ct*a,m:true,w:'700',al:'right'});
+
+        // burst on appear
+        once('transfer'+i,()=>burst(tx+cardW/2,ty+cardH/2,team.color,25));
+      }
+    });
+
+    // Bottom grid of team prices
+    if(t>.55){
+      const gt2=eo(Math.min(1,(t-.55)/.2))*a;
+      const miniTeams=[
+        {t:'ARS',p:'$458',c:'+11.2%',col:TEAMS.ARS.color},
+        {t:'PSG',p:'$371',c:'+11.1%',col:TEAMS.PSG.color},
+        {t:'BAR',p:'$425',c:'+9.3%',col:TEAMS.BAR.color},
+        {t:'BAY',p:'$438',c:'+9.2%',col:TEAMS.BAY.color},
+      ];
+      const miniW=90*s,miniGap=12*s;
+      const mStartX=cx-(miniTeams.length*(miniW+miniGap)-miniGap)/2;
+      const mY=cy+80*s;
+
+      miniTeams.forEach((mt,i)=>{
+        const mx=mStartX+i*(miniW+miniGap);
+        X.globalAlpha=gt2;
+        rr(mx,mY,miniW,50*s,6,'#10131a',mt.col+'40',1);
+        X.globalAlpha=1;
+        txt(mt.t,mx+miniW/2,mY+15*s,{sz:Math.round(11*s),c:mt.col,a:gt2,m:true,w:'700'});
+        txt(mt.p,mx+miniW/2,mY+32*s,{sz:Math.round(12*s),c:WH,a:gt2,m:true,w:'600'});
+        txt(mt.c,mx+miniW/2,mY+46*s,{sz:Math.round(9*s),c:L,a:gt2*.8,m:true,w:'700'});
+      });
+    }
+  }
+
+  // ═══ SCENE 6: FINALE (22-28s) ═══
+  if(gT>21500){
+    const t=gt(22000,6000),fi=eo(Math.min(1,t*4)),a=fi;
+
+    // Background energy
+    if(t>.0){
+      glow(cx,cy,350*s,L);
+      // subtle particle field
+      if(Math.random()<.08)parts.push(new P(Math.random()*W,H+10,L+'80',(Math.random()-.5)*.5,-1-Math.random()*2,60+Math.random()*40,1+Math.random()));
+    }
+
+    // "The season never stops."
+    if(t>.0&&t<.5){
+      const h1=el(Math.min(1,t/.12));
+      const fo1=t>.4?1-(t-.4)/.1:1;
+      txt('The season never stops.',cx,cy-50*s,{sz:Math.round(42*s),c:WH,a:h1*fo1,w:'800'});
+      once('finalBurst1',()=>confetti(cx,cy-50*s,60));
+    }
+
+    // Sub lines
+    if(t>.15&&t<.6){
+      const h2=eo(Math.min(1,(t-.15)/.12));
+      const fo2=t>.5?1-(t-.5)/.1:1;
+      txt('Transfers. Results. Rivalries.',cx,cy,{sz:Math.round(26*s),c:DM,a:h2*fo2,w:'500'});
+    }
+    if(t>.25&&t<.7){
+      const h3=eo(Math.min(1,(t-.25)/.12));
+      const fo3=t>.6?1-(t-.6)/.1:1;
+      txt('Your position captures it all.',cx,cy+40*s,{sz:Math.round(26*s),c:L,a:h3*fo3,w:'700'});
+    }
+
+    // NOTCH branding
+    if(t>.5){
+      const bt=el(Math.min(1,(t-.5)/.2));
+
+      // big glow
+      glow(cx,cy-20*s,250*s,L);
+
+      // NOTCH text
+      txt('NOTCH',cx,cy-30*s,{sz:Math.round(72*s),c:WH,a:bt,w:'800'});
+
+      // tagline
+      if(t>.58){
+        const tl=eo(Math.min(1,(t-.58)/.12));
+        txt('The Sports Stock Market',cx,cy+25*s,{sz:Math.round(18*s),c:DM,a:tl,w:'500'});
+      }
+
+      // CTA button with glow
+      if(t>.65){
+        const ca=eo(Math.min(1,(t-.65)/.15));
+        const btnW=200*s,btnH=50*s;
+        const btnX=cx-btnW/2,btnY=cy+60*s;
+        const pulse=.85+Math.sin(gT*.006)*.15;
+
+        // button glow
+        glow(cx,btnY+btnH/2,100*s,L);
+
+        X.globalAlpha=ca*pulse;
+        rr(btnX,btnY,btnW,btnH,btnH/2,L);
+        X.globalAlpha=1;
+        txt('notch.win',cx,btnY+btnH/2,{sz:Math.round(18*s),c:'#000',a:ca,w:'700'});
+
+        // outer ring glow
+        X.globalAlpha=ca*.3*pulse;
+        X.strokeStyle=L;X.lineWidth=2;
+        X.beginPath();X.roundRect(btnX-4,btnY-4,btnW+8,btnH+8,btnH/2+4);X.stroke();
+        X.globalAlpha=1;
+      }
+
+      once('finalBurst2',()=>{
+        confetti(cx,cy-30*s,120);
+        burst(cx-100*s,cy,L,40);
+        burst(cx+100*s,cy,L,40);
+      });
+    }
+
+    // continuous sparkle rain in finale
+    if(t>.5&&Math.random()<.1){
+      sparkRain(cx-200*s,cy-200*s,400*s,3);
+    }
+  }
+
+  // Show "watch again" at end
+  if(gT>DUR-500)btn.classList.add('on');
+
+  if(gT<DUR+2000)requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

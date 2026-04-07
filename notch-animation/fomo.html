@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — FOMO Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0c10; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #watchAgain {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: none; border: 2px solid #b2ed68; color: #b2ed68;
+    font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600;
+    padding: 12px 32px; border-radius: 8px; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity 0.4s, background 0.2s;
+    z-index: 10;
+  }
+  #watchAgain:hover { background: rgba(178,237,104,0.15); }
+  #watchAgain.visible { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain">Watch Again</button>
+<script>
+// ── SETUP ──
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const watchBtn = document.getElementById('watchAgain');
+
+let W, H, S, startTime, animTime = 0, running = true;
+const DURATION = 27;
+
+// colors
+const BG = '#0a0c10';
+const LIME = '#b2ed68';
+const RED = '#ff4d4d';
+const WHITE = '#ffffff';
+const CYAN = '#22d3ee';
+const DIM = '#2a2e38';
+const DIMMER = '#181b22';
+
+// ── PARTICLES ──
+let particles = [];
+class Particle {
+  constructor(x, y, color, vx, vy, life, size) {
+    this.x = x; this.y = y; this.color = color;
+    this.vx = vx; this.vy = vy; this.life = life; this.maxLife = life;
+    this.size = size || 3;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 180 * dt; // gravity
+    this.life -= dt;
+  }
+  draw() {
+    const a = Math.max(0, this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * S, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnFountain(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+    const speed = (150 + Math.random() * 250) * S;
+    particles.push(new Particle(x, y, color || LIME,
+      Math.cos(angle) * speed, Math.sin(angle) * speed,
+      0.6 + Math.random() * 0.8, 2 + Math.random() * 3));
+  }
+}
+
+function spawnBurst(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (100 + Math.random() * 300) * S;
+    particles.push(new Particle(x, y, color || LIME,
+      Math.cos(angle) * speed, Math.sin(angle) * speed,
+      0.4 + Math.random() * 0.6, 2 + Math.random() * 4));
+  }
+}
+
+// ── EASING ──
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+0.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+0.9375;
+  return 7.5625*(t-=2.625/2.75)*t+0.984375;
+}
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ── TEXT HELPERS ──
+function setFont(size, family, weight) {
+  ctx.font = `${weight || 600} ${Math.round(size * S)}px '${family || 'Space Grotesk'}', sans-serif`;
+}
+function drawText(text, x, y, color, align) {
+  ctx.fillStyle = color || WHITE;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+function drawGlow(text, x, y, color, glowColor, size, family, weight) {
+  setFont(size, family, weight);
+  ctx.shadowColor = glowColor || color;
+  ctx.shadowBlur = 20 * S;
+  drawText(text, x, y, color);
+  ctx.shadowBlur = 0;
+}
+
+// ── PRICE ENGINE ──
+const priceKeyframes = [
+  { t: 0, v: 618.00 },
+  { t: 3, v: 618.40 },
+  { t: 4, v: 621.00 },
+  { t: 5, v: 625.00 },
+  { t: 6, v: 629.00 },
+  { t: 7, v: 632.00 },
+  { t: 11, v: 632.00 },
+  { t: 15, v: 632.50 },
+  { t: 16, v: 635.00 },
+  { t: 17, v: 638.00 },
+  { t: 18, v: 640.00 },
+  { t: 19, v: 641.00 },
+  { t: 23, v: 641.50 },
+  { t: 27, v: 643.20 },
+];
+function getPrice(t) {
+  if (t <= priceKeyframes[0].t) return priceKeyframes[0].v;
+  if (t >= priceKeyframes[priceKeyframes.length-1].t) return priceKeyframes[priceKeyframes.length-1].v;
+  for (let i = 0; i < priceKeyframes.length - 1; i++) {
+    const a = priceKeyframes[i], b = priceKeyframes[i+1];
+    if (t >= a.t && t <= b.t) {
+      const p = (t - a.t) / (b.t - a.t);
+      return lerp(a.v, b.v, easeInOutCubic(p));
+    }
+  }
+  return 618;
+}
+
+// ── TRADE FEED ──
+const trades = [
+  "Long ARS 10x  +$142", "Long ARS 5x  +$38", "Long ARS 20x  +$510",
+  "Long ARS 3x  +$22", "Long ARS 10x  +$195", "Long ARS 15x  +$340",
+  "Long ARS 5x  +$64", "Long ARS 10x  +$128", "Long ARS 25x  +$720",
+  "Long ARS 8x  +$96", "Long ARS 10x  +$155", "Long ARS 5x  +$41",
+];
+
+// ── FOUNTAIN TRACKER ──
+let lastFountainPrice = 618;
+let lastPhase = -1;
+
+// ── RESIZE ──
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S = Math.min(W / 800, H / 600);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── DRAW ROUNDED RECT ──
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ── DRAW PHONE MOCKUP ──
+function drawPhone(cx, cy, w, h, alpha) {
+  ctx.globalAlpha = alpha;
+  const r = 24 * S;
+  // outer shell
+  ctx.strokeStyle = '#3a3f4a';
+  ctx.lineWidth = 3 * S;
+  roundRect(cx - w/2, cy - h/2, w, h, r);
+  ctx.fillStyle = '#12141a';
+  ctx.fill();
+  ctx.stroke();
+  // notch
+  const nw = 80 * S, nh = 18 * S;
+  roundRect(cx - nw/2, cy - h/2 - 1, nw, nh, 8 * S);
+  ctx.fillStyle = '#12141a';
+  ctx.fill();
+  // screen border
+  const m = 8 * S;
+  roundRect(cx - w/2 + m, cy - h/2 + m, w - m*2, h - m*2, r - 4*S);
+  ctx.fillStyle = '#0d0f14';
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// ── MAIN RENDER ──
+function render(dt) {
+  const t = animTime;
+
+  // clear
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  const price = getPrice(t);
+  const priceStr = '$' + price.toFixed(2);
+
+  // fountain on price jumps
+  if (price - lastFountainPrice > 1.5) {
+    spawnFountain(W/2, H * 0.35, Math.floor(12 * S), LIME);
+    lastFountainPrice = price;
+  }
+
+  // ── PHASE 1: 0-3s — RIGHT NOW + Price ticker ──
+  if (t < 3) {
+    const fadeIn = easeOutCubic(clamp01(t / 0.8));
+    const pulse = 0.85 + 0.15 * Math.sin(t * 6);
+
+    // RIGHT NOW
+    ctx.globalAlpha = fadeIn * pulse;
+    setFont(52, 'JetBrains Mono', 700);
+    drawGlow('RIGHT NOW', W/2, H*0.28, LIME, LIME, 52, 'JetBrains Mono', 700);
+    ctx.globalAlpha = 1;
+
+    // Subtitle
+    ctx.globalAlpha = fadeIn;
+    setFont(16, 'Space Grotesk', 500);
+    drawText('ARSENAL IS MOVING', W/2, H*0.28 + 44*S, CYAN);
+
+    // Price
+    const priceFade = easeOutCubic(clamp01((t - 0.5) / 0.6));
+    ctx.globalAlpha = priceFade;
+    setFont(18, 'Space Grotesk', 500);
+    drawText('ARS INDEX', W/2, H*0.45, '#8a8f9a');
+    setFont(64, 'JetBrains Mono', 700);
+    const greenFlash = Math.sin(t * 12) > 0.3 ? LIME : '#9ddb55';
+    drawGlow(priceStr, W/2, H*0.53, greenFlash, LIME, 64, 'JetBrains Mono', 700);
+
+    // Live dot
+    const dotPulse = 0.5 + 0.5 * Math.sin(t * 8);
+    ctx.globalAlpha = priceFade * dotPulse;
+    ctx.fillStyle = LIME;
+    ctx.beginPath();
+    ctx.arc(W/2 - 100*S, H*0.45, 4*S, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = priceFade;
+    setFont(11, 'JetBrains Mono', 500);
+    drawText('LIVE', W/2 - 82*S, H*0.45, LIME);
+
+    ctx.globalAlpha = 1;
+  }
+
+  // ── PHASE 2: 3-7s — Price acceleration + Headlines ──
+  if (t >= 3 && t < 7) {
+    const phase = t - 3;
+
+    // Price display (persistent)
+    setFont(18, 'Space Grotesk', 500);
+    drawText('ARS INDEX', W/2, H*0.2, '#8a8f9a');
+    setFont(72, 'JetBrains Mono', 700);
+    const flash = Math.sin(t * 15) > 0 ? LIME : '#a5e35a';
+    drawGlow(priceStr, W/2, H*0.3, flash, LIME, 72, 'JetBrains Mono', 700);
+
+    // Arrow up
+    setFont(28, 'JetBrains Mono', 700);
+    const arrowBounce = Math.abs(Math.sin(t * 5)) * 8 * S;
+    drawText('+' + (price - 618).toFixed(2), W/2, H*0.3 + 52*S - arrowBounce, LIME);
+
+    // Headlines
+    const headlines = [
+      { text: 'Arsenal beat City 3-1', start: 0, color: WHITE },
+      { text: 'Title odds shift to 78%', start: 1.3, color: CYAN },
+      { text: 'Market moving FAST', start: 2.6, color: LIME },
+    ];
+    headlines.forEach((h, i) => {
+      const ht = phase - h.start;
+      if (ht > 0) {
+        const fadeIn = easeOutCubic(clamp01(ht / 0.4));
+        const fadeOut = ht > 1.0 ? 1 - clamp01((ht - 1.0) / 0.3) : 1;
+        ctx.globalAlpha = fadeIn * fadeOut;
+        setFont(22, 'Space Grotesk', 600);
+        drawText(h.text, W/2, H*0.52 + i * 0 * S, h.color);
+        ctx.globalAlpha = 1;
+      }
+    });
+
+    // Fountain effect continuous
+    if (Math.random() < 0.3) {
+      spawnFountain(W/2, H * 0.38, 3, LIME);
+    }
+  }
+
+  // ── PHASE 3: 7-11s — Stats ──
+  if (t >= 7 && t < 11) {
+    const phase = t - 7;
+
+    // Header
+    const headerFade = easeOutCubic(clamp01(phase / 0.5));
+    ctx.globalAlpha = headerFade;
+    setFont(28, 'Space Grotesk', 700);
+    drawText('IN THE LAST HOUR:', W/2, H*0.14, CYAN);
+
+    // Stats
+    const stats = [
+      { label: 'Volume', value: '$2.4M', change: '+340%', delay: 0.3 },
+      { label: 'Longs Opened', value: '847', change: '+212%', delay: 0.7 },
+      { label: 'Price Change', value: '+4.2%', change: '', delay: 1.1 },
+    ];
+    stats.forEach((s, i) => {
+      const st = phase - s.delay;
+      if (st > 0) {
+        const slide = easeOutElastic(clamp01(st / 0.8));
+        const yy = H*0.24 + i * 62*S;
+        const xx = W/2;
+        ctx.globalAlpha = clamp01(st / 0.4);
+
+        // bg card
+        const cw = 340 * S, ch = 48 * S;
+        roundRect(xx - cw/2, yy - ch/2, cw, ch, 8*S);
+        ctx.fillStyle = 'rgba(178,237,104,0.06)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(178,237,104,0.15)';
+        ctx.lineWidth = 1 * S;
+        ctx.stroke();
+
+        setFont(14, 'Space Grotesk', 500);
+        drawText(s.label, xx - 100*S * slide, yy - 8*S, '#8a8f9a', 'center');
+        setFont(22, 'JetBrains Mono', 700);
+        drawText(s.value, xx + 20*S, yy - 2*S, LIME, 'center');
+        if (s.change) {
+          setFont(14, 'JetBrains Mono', 600);
+          drawText(s.change, xx + 120*S, yy - 2*S, LIME, 'center');
+        }
+      }
+    });
+
+    // Scrolling trade feed
+    if (phase > 1.8) {
+      const feedAlpha = easeOutCubic(clamp01((phase - 1.8) / 0.5));
+      ctx.globalAlpha = feedAlpha;
+      setFont(12, 'Space Grotesk', 600);
+      drawText('LIVE TRADES', W/2, H*0.58, '#8a8f9a');
+
+      const scrollOffset = (phase - 1.8) * 80 * S;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(W*0.1, H*0.62, W*0.8, H*0.28);
+      ctx.clip();
+
+      trades.forEach((trade, i) => {
+        const yy = H*0.66 + i * 32*S - scrollOffset;
+        if (yy > H*0.6 && yy < H*0.92) {
+          const entryT = clamp01((phase - 1.8 - i * 0.08));
+          ctx.globalAlpha = feedAlpha * entryT;
+
+          const cw = 280 * S, ch = 26 * S;
+          roundRect(W/2 - cw/2, yy - ch/2, cw, ch, 5*S);
+          ctx.fillStyle = 'rgba(178,237,104,0.04)';
+          ctx.fill();
+
+          setFont(13, 'JetBrains Mono', 500);
+          drawText(trade, W/2, yy, LIME);
+        }
+      });
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── PHASE 4: 11-15s — PnL Cards ──
+  if (t >= 11 && t < 15) {
+    const phase = t - 11;
+
+    const cards = [
+      { label: 'OPENED AT $600', pnl: '+5.3%', dollar: '+$26.50 per $500', delay: 0, color: LIME },
+      { label: 'OPENED AT $580 LAST WEEK', pnl: '+8.6%', dollar: '+$43.00 per $500', delay: 1.2, color: LIME },
+      { label: 'OPENED IN AUGUST AT $412', pnl: '+53.4%', dollar: '+$267.00 per $500', delay: 2.4, color: '#00ff88' },
+    ];
+
+    // Section header
+    const hdrT = easeOutCubic(clamp01(phase / 0.4));
+    ctx.globalAlpha = hdrT;
+    setFont(16, 'Space Grotesk', 500);
+    drawText('TRADERS WHO...', W/2, H*0.1, '#8a8f9a');
+    ctx.globalAlpha = 1;
+
+    cards.forEach((card, i) => {
+      const ct = phase - card.delay;
+      if (ct > 0) {
+        const slideIn = easeOutElastic(clamp01(ct / 0.7));
+        const fadeOut = i < cards.length - 1 ? (ct > 1.0 ? 1 - clamp01((ct - 1.0) / 0.2) : 1) : 1;
+        const alpha = clamp01(ct / 0.3) * fadeOut;
+        ctx.globalAlpha = alpha;
+
+        const yBase = H * 0.38;
+        const cw = 380 * S, ch = 140 * S;
+        const xx = W/2, yy = yBase;
+
+        // Card bg
+        roundRect(xx - cw/2, yy - ch/2, cw, ch, 12*S);
+        ctx.fillStyle = 'rgba(178,237,104,0.05)';
+        ctx.fill();
+        // Pulsing border
+        const borderPulse = 0.3 + 0.7 * Math.abs(Math.sin(t * 4));
+        ctx.strokeStyle = card.color;
+        ctx.globalAlpha = alpha * borderPulse;
+        ctx.lineWidth = 2 * S;
+        ctx.stroke();
+        ctx.globalAlpha = alpha;
+
+        // label
+        setFont(14, 'Space Grotesk', 500);
+        drawText(card.label, xx, yy - 40*S, '#8a8f9a');
+
+        // PnL big
+        const pnlScale = easeOutBounce(clamp01(ct / 0.5));
+        setFont(48 * pnlScale, 'JetBrains Mono', 700);
+        drawGlow(card.pnl, xx, yy + 5*S, card.color, card.color, 48 * pnlScale, 'JetBrains Mono', 700);
+
+        // Dollar
+        setFont(16, 'JetBrains Mono', 500);
+        drawText('= ' + card.dollar, xx, yy + 45*S, WHITE);
+
+        // Burst on entry
+        if (ct > 0 && ct < 0.05) {
+          spawnBurst(xx, yy, 25, card.color);
+        }
+      }
+    });
+
+    // Price still in corner
+    ctx.globalAlpha = 0.6;
+    setFont(14, 'JetBrains Mono', 500);
+    drawText('ARS ' + priceStr, W - 80*S, 30*S, LIME, 'center');
+    ctx.globalAlpha = 1;
+  }
+
+  // ── PHASE 5: 15-19s — Still climbing + "YOU ARE NOT IN THIS TRADE" ──
+  if (t >= 15 && t < 19) {
+    const phase = t - 15;
+
+    // Price climbing big
+    setFont(18, 'Space Grotesk', 500);
+    drawText('ARS INDEX', W/2, H*0.18, '#8a8f9a');
+    setFont(64, 'JetBrains Mono', 700);
+    const flash = Math.sin(t * 12) > 0 ? LIME : '#9ddb55';
+    drawGlow(priceStr, W/2, H*0.28, flash, LIME, 64, 'JetBrains Mono', 700);
+
+    // Up arrow animation
+    const arrowY = H*0.36 - Math.abs(Math.sin(t * 4)) * 12 * S;
+    setFont(20, 'JetBrains Mono', 700);
+    drawText('+' + (price - 618).toFixed(2) + ' (+' + ((price - 618)/618*100).toFixed(1) + '%)', W/2, arrowY, LIME);
+
+    // Continuous fountain
+    if (Math.random() < 0.2) {
+      spawnFountain(W/2, H * 0.34, 2, LIME);
+    }
+
+    // THE MESSAGE
+    if (phase >= 1.5) {
+      const msgT = phase - 1.5;
+      const msgFade = easeOutCubic(clamp01(msgT / 0.5));
+
+      if (msgT < 2.2) {
+        // RED WARNING
+        const redPulse = 0.6 + 0.4 * Math.sin(t * 8);
+        ctx.globalAlpha = msgFade * redPulse;
+        setFont(30, 'Space Grotesk', 700);
+        drawGlow('YOU ARE NOT IN THIS TRADE.', W/2, H*0.56, RED, RED, 30, 'Space Grotesk', 700);
+
+        // Pulsing border around text
+        const pw = 440 * S, ph = 56 * S;
+        ctx.strokeStyle = RED;
+        ctx.lineWidth = 2 * S;
+        ctx.globalAlpha = msgFade * redPulse * 0.5;
+        roundRect(W/2 - pw/2, H*0.56 - ph/2, pw, ph, 8*S);
+        ctx.stroke();
+      }
+
+      if (msgT >= 2.0) {
+        const yetFade = easeOutElastic(clamp01((msgT - 2.0) / 0.6));
+        ctx.globalAlpha = yetFade;
+        setFont(44, 'Space Grotesk', 700);
+        drawGlow('Yet.', W/2, H*0.7, CYAN, CYAN, 44, 'Space Grotesk', 700);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── PHASE 6: 19-23s — Phone mockup + tap to trade ──
+  if (t >= 19 && t < 23) {
+    const phase = t - 19;
+
+    // Phone slide in
+    const phoneSlide = easeOutCubic(clamp01(phase / 0.8));
+    const phoneX = W/2;
+    const phoneY = H * 0.45;
+    const pw = 220 * S, ph = 400 * S;
+
+    drawPhone(phoneX, phoneY + (1 - phoneSlide) * 200 * S, pw, ph, phoneSlide);
+
+    if (phoneSlide > 0.5) {
+      const innerAlpha = clamp01((phoneSlide - 0.5) * 2);
+      const pyOff = (1 - phoneSlide) * 200 * S;
+      ctx.globalAlpha = innerAlpha;
+
+      // Screen content
+      const screenTop = phoneY - ph/2 + 40*S + pyOff;
+      setFont(11, 'Space Grotesk', 600);
+      drawText('NOTCH', phoneX, screenTop, LIME);
+
+      setFont(10, 'Space Grotesk', 500);
+      drawText('ARSENAL FC', phoneX, screenTop + 24*S, '#8a8f9a');
+
+      setFont(28, 'JetBrains Mono', 700);
+      drawText(priceStr, phoneX, screenTop + 58*S, LIME);
+
+      // Trade button
+      if (phase < 2.5) {
+        const btnY = screenTop + 110*S;
+        const btnW = 170*S, btnH = 44*S;
+        roundRect(phoneX - btnW/2, btnY - btnH/2, btnW, btnH, 10*S);
+        ctx.fillStyle = LIME;
+        ctx.fill();
+
+        setFont(11, 'Space Grotesk', 700);
+        drawText('LONG ARS', phoneX, btnY - 8*S, '#0a0c10');
+        setFont(9, 'JetBrains Mono', 500);
+        drawText('$50 \u00B7 5x leverage', phoneX, btnY + 8*S, '#0a0c10');
+
+        // Tap hint
+        if (phase > 1.5 && phase < 2.5) {
+          const tapPulse = 0.5 + 0.5 * Math.sin((phase - 1.5) * 10);
+          ctx.globalAlpha = innerAlpha * tapPulse;
+          ctx.fillStyle = 'rgba(178,237,104,0.3)';
+          ctx.beginPath();
+          ctx.arc(phoneX, btnY, 30*S, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+
+      // After tap
+      if (phase >= 2.5) {
+        const confirmT = phase - 2.5;
+        const confirmFade = easeOutCubic(clamp01(confirmT / 0.4));
+        ctx.globalAlpha = confirmFade;
+
+        const btnY = screenTop + 110*S;
+        const btnW = 170*S, btnH = 44*S;
+        roundRect(phoneX - btnW/2, btnY - btnH/2, btnW, btnH, 10*S);
+        ctx.fillStyle = 'rgba(178,237,104,0.15)';
+        ctx.fill();
+        ctx.strokeStyle = LIME;
+        ctx.lineWidth = 2*S;
+        ctx.stroke();
+
+        setFont(10, 'Space Grotesk', 600);
+        drawText('POSITION OPENED', phoneX, btnY - 6*S, LIME);
+        setFont(9, 'JetBrains Mono', 500);
+        drawText('AT $641.00', phoneX, btnY + 10*S, WHITE);
+
+        // Checkmark
+        setFont(20, 'Space Grotesk', 700);
+        drawText('\u2713', phoneX, btnY - 30*S, LIME);
+
+        if (confirmT < 0.1) {
+          spawnBurst(phoneX, btnY, 40, LIME);
+        }
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    // Text beside phone
+    if (phase > 0.8) {
+      const sideT = easeOutCubic(clamp01((phase - 0.8) / 0.5));
+      ctx.globalAlpha = sideT;
+      setFont(14, 'Space Grotesk', 600);
+      drawText('ONE TAP. YOU\'RE IN.', W/2, H*0.82, CYAN);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ── PHASE 7: 23-27s — Finale ──
+  if (t >= 23) {
+    const phase = t - 23;
+
+    // Line 1
+    const l1 = easeOutCubic(clamp01(phase / 0.8));
+    ctx.globalAlpha = l1;
+    setFont(32, 'Space Grotesk', 700);
+    drawText("The market doesn't wait.", W/2, H*0.25, WHITE);
+
+    // Line 2
+    if (phase > 1.0) {
+      const l2 = easeOutCubic(clamp01((phase - 1.0) / 0.8));
+      ctx.globalAlpha = l2;
+      setFont(32, 'Space Grotesk', 700);
+      drawText('Neither should you.', W/2, H*0.34, LIME);
+    }
+
+    // Price still ticking
+    if (phase > 1.5) {
+      const pFade = easeOutCubic(clamp01((phase - 1.5) / 0.5));
+      ctx.globalAlpha = pFade * 0.6;
+      setFont(16, 'JetBrains Mono', 500);
+      drawText('ARS ' + priceStr, W/2, H*0.46, LIME);
+      ctx.globalAlpha = 1;
+    }
+
+    // CTA
+    if (phase > 2.0) {
+      const ctaT = phase - 2.0;
+      const ctaFade = easeOutCubic(clamp01(ctaT / 0.6));
+      const ctaPulse = 0.8 + 0.2 * Math.sin(t * 5);
+      ctx.globalAlpha = ctaFade * ctaPulse;
+
+      // CTA box
+      const cw = 300*S, ch = 70*S;
+      roundRect(W/2 - cw/2, H*0.58 - ch/2, cw, ch, 14*S);
+      ctx.fillStyle = 'rgba(178,237,104,0.08)';
+      ctx.fill();
+      ctx.strokeStyle = LIME;
+      ctx.lineWidth = 2*S;
+      ctx.stroke();
+
+      // Glow behind
+      ctx.shadowColor = LIME;
+      ctx.shadowBlur = 30*S;
+      ctx.strokeStyle = LIME;
+      roundRect(W/2 - cw/2, H*0.58 - ch/2, cw, ch, 14*S);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      setFont(36, 'Space Grotesk', 700);
+      drawGlow('notch.win', W/2, H*0.58, WHITE, LIME, 36, 'Space Grotesk', 700);
+
+      ctx.globalAlpha = ctaFade * 0.7;
+      setFont(14, 'Space Grotesk', 500);
+      drawText('Trade teams like stocks. Start now.', W/2, H*0.58 + 48*S, '#8a8f9a');
+    }
+
+    ctx.globalAlpha = 1;
+
+    // Show watch again button
+    if (phase > 3.0) {
+      watchBtn.classList.add('visible');
+    }
+  } else {
+    watchBtn.classList.remove('visible');
+  }
+
+  // ── PARTICLES ──
+  particles.forEach(p => { p.update(dt); p.draw(); });
+  particles = particles.filter(p => p.life > 0);
+
+  // ── PROGRESS BAR ──
+  const progress = clamp01(t / DURATION);
+  ctx.fillStyle = DIMMER;
+  ctx.fillRect(0, H - 4*S, W, 4*S);
+  ctx.fillStyle = LIME;
+  ctx.fillRect(0, H - 4*S, W * progress, 4*S);
+  // glow tip
+  if (progress > 0 && progress < 1) {
+    const gx = W * progress;
+    const grad = ctx.createRadialGradient(gx, H - 2*S, 0, gx, H - 2*S, 12*S);
+    grad.addColorStop(0, 'rgba(178,237,104,0.6)');
+    grad.addColorStop(1, 'rgba(178,237,104,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(gx - 15*S, H - 15*S, 30*S, 15*S);
+  }
+}
+
+// ── ANIMATION LOOP ──
+function loop(ts) {
+  if (!startTime) startTime = ts;
+  const elapsed = (ts - startTime) / 1000;
+  const dt = Math.min(elapsed - animTime, 0.05);
+  animTime = elapsed;
+
+  if (animTime <= DURATION + 2) {
+    render(dt);
+  }
+
+  if (running) requestAnimationFrame(loop);
+}
+
+function start() {
+  startTime = null;
+  animTime = 0;
+  particles = [];
+  lastFountainPrice = 618;
+  lastPhase = -1;
+  watchBtn.classList.remove('visible');
+  running = true;
+  requestAnimationFrame(loop);
+}
+
+watchBtn.addEventListener('click', start);
+start();
+</script>
+</body>
+</html>

@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Short Seller</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0c10; overflow: hidden; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+  canvas { display: block; }
+  #watchAgain {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px;
+    background: linear-gradient(135deg, #b2ed68, #8bc34a); color: #0a0c10;
+    border: none; padding: 14px 36px; border-radius: 50px; cursor: pointer;
+    display: none; z-index: 10; letter-spacing: 0.5px;
+    box-shadow: 0 0 30px rgba(178,237,104,0.4);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  #watchAgain:hover { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 50px rgba(178,237,104,0.6); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="watchAgain">Watch Again</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const btn = document.getElementById('watchAgain');
+
+// --- CONSTANTS ---
+const BG = '#0a0c10';
+const LIME = '#b2ed68';
+const RED = '#ff4d4d';
+const PURPLE = '#a78bfa';
+const SPURS_NAVY = '#132257';
+const WHITE = '#ffffff';
+const TOTAL_DURATION = 31; // seconds
+
+let W, H, scale, startTime, animFrame;
+let particles = [];
+let redRain = [];
+let dollarSigns = [];
+let greenBurst = [];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  scale = Math.min(W / 1080, H / 1920) * (W > H ? 1.6 : 1);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- EASING ---
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t - 0.075) * (2 * Math.PI) / 0.3) + 1;
+}
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) return 7.5625*(t-=1.5/2.75)*t+0.75;
+  if (t < 2.5/2.75) return 7.5625*(t-=2.25/2.75)*t+0.9375;
+  return 7.5625*(t-=2.625/2.75)*t+0.984375;
+}
+function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+// --- PARTICLES ---
+class Particle {
+  constructor(x, y, color, vx, vy, life, size) {
+    this.x = x; this.y = y; this.color = color;
+    this.vx = vx; this.vy = vy; this.life = life; this.maxLife = life;
+    this.size = size || 2;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 60 * dt; // gravity
+    this.life -= dt;
+  }
+  draw() {
+    let a = clamp01(this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+class RainDrop {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = -Math.random() * H;
+    this.speed = (200 + Math.random() * 400) * scale;
+    this.length = (10 + Math.random() * 20) * scale;
+    this.alpha = 0.15 + Math.random() * 0.35;
+  }
+  update(dt) {
+    this.y += this.speed * dt;
+    if (this.y > H + 20) this.reset();
+  }
+  draw() {
+    ctx.globalAlpha = this.alpha;
+    ctx.strokeStyle = RED;
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(this.x, this.y - this.length);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+class DollarSign {
+  constructor(x, y) {
+    this.x = x + (Math.random() - 0.5) * 200 * scale;
+    this.y = y;
+    this.vy = -(80 + Math.random() * 120) * scale;
+    this.vx = (Math.random() - 0.5) * 60 * scale;
+    this.life = 2 + Math.random();
+    this.maxLife = this.life;
+    this.size = (20 + Math.random() * 24) * scale;
+    this.rotation = (Math.random() - 0.5) * 0.5;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 30 * dt;
+    this.life -= dt;
+  }
+  draw() {
+    let a = clamp01(this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = LIME;
+    ctx.font = `700 ${this.size}px 'JetBrains Mono'`;
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation);
+    ctx.fillText('$', 0, 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+class GreenBurstParticle {
+  constructor(x, y) {
+    let angle = Math.random() * Math.PI * 2;
+    let speed = (100 + Math.random() * 350) * scale;
+    this.x = x; this.y = y;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.life = 0.8 + Math.random() * 0.8;
+    this.maxLife = this.life;
+    this.size = (2 + Math.random() * 4) * scale;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vx *= 0.97; this.vy *= 0.97;
+    this.life -= dt;
+  }
+  draw() {
+    let a = clamp01(this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = LIME;
+    ctx.shadowColor = LIME;
+    ctx.shadowBlur = 10 * scale;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Pre-create red rain
+for (let i = 0; i < 80; i++) redRain.push(new RainDrop());
+
+// --- SPURS LOGO (simplified cockerel silhouette) ---
+function drawSpursLogo(x, y, size, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = SPURS_NAVY;
+  ctx.strokeStyle = '#1a2d6b';
+  ctx.lineWidth = 2 * scale;
+
+  // Shield shape
+  let s = size;
+  ctx.beginPath();
+  ctx.moveTo(x - s*0.5, y - s*0.55);
+  ctx.lineTo(x + s*0.5, y - s*0.55);
+  ctx.lineTo(x + s*0.5, y + s*0.15);
+  ctx.quadraticCurveTo(x + s*0.45, y + s*0.55, x, y + s*0.65);
+  ctx.quadraticCurveTo(x - s*0.45, y + s*0.55, x - s*0.5, y + s*0.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner white detail
+  ctx.fillStyle = `rgba(255,255,255,${alpha * 0.9})`;
+  ctx.font = `700 ${s*0.35}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('SPURS', x, y);
+
+  ctx.globalAlpha = 1;
+}
+
+// --- DRAWING HELPERS ---
+function drawText(text, x, y, { font = '700 36px Space Grotesk', color = WHITE, alpha = 1, align = 'center', glow = null, glowSize = 20 } = {}) {
+  ctx.globalAlpha = alpha;
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = glowSize * scale;
+  }
+  ctx.fillStyle = color;
+  ctx.font = font.replace(/(\d+)px/g, (m, n) => `${n * scale}px`);
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+function drawGlowRect(x, y, w, h, radius, fillColor, glowColor, glowSize) {
+  ctx.save();
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = glowSize * scale;
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, radius * scale);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawProgressBar(t) {
+  let barH = 4 * scale;
+  let progress = t / TOTAL_DURATION;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, H - barH, W, barH);
+  let gradient = ctx.createLinearGradient(0, 0, W * progress, 0);
+  gradient.addColorStop(0, PURPLE);
+  gradient.addColorStop(1, LIME);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, H - barH, W * progress, barH);
+}
+
+// --- PRICE CHART ---
+function drawPriceChart(x, y, w, h, progress, alpha) {
+  ctx.globalAlpha = alpha;
+
+  // Background
+  ctx.fillStyle = 'rgba(19,34,87,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, 12 * scale);
+  ctx.fill();
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    let gy = (y - h/2) + (h/5) * (i+1);
+    ctx.beginPath();
+    ctx.moveTo(x - w/2 + 10*scale, gy);
+    ctx.lineTo(x + w/2 - 10*scale, gy);
+    ctx.stroke();
+  }
+
+  // Price data points (going down)
+  const pricePoints = [485, 480, 478, 470, 465, 458, 450, 440, 435, 425, 418, 410, 400, 390, 375, 365, 355, 345, 340];
+  let maxP = 490, minP = 330;
+
+  let chartX = x - w/2 + 30*scale;
+  let chartW = w - 60*scale;
+  let chartY = y - h/2 + 20*scale;
+  let chartH = h - 50*scale;
+
+  let numPoints = Math.floor(pricePoints.length * progress);
+  if (numPoints < 2) { ctx.globalAlpha = 1; return; }
+
+  // Gradient fill under line
+  let grad = ctx.createLinearGradient(0, chartY, 0, chartY + chartH);
+  grad.addColorStop(0, 'rgba(255,77,77,0.3)');
+  grad.addColorStop(1, 'rgba(255,77,77,0)');
+
+  ctx.beginPath();
+  for (let i = 0; i < numPoints; i++) {
+    let px = chartX + (i / (pricePoints.length - 1)) * chartW;
+    let py = chartY + (1 - (pricePoints[i] - minP) / (maxP - minP)) * chartH;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  let lastX = chartX + ((numPoints-1) / (pricePoints.length - 1)) * chartW;
+  ctx.lineTo(lastX, chartY + chartH);
+  ctx.lineTo(chartX, chartY + chartH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < numPoints; i++) {
+    let px = chartX + (i / (pricePoints.length - 1)) * chartW;
+    let py = chartY + (1 - (pricePoints[i] - minP) / (maxP - minP)) * chartH;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.strokeStyle = RED;
+  ctx.lineWidth = 3 * scale;
+  ctx.shadowColor = RED;
+  ctx.shadowBlur = 12 * scale;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Current price dot
+  let lastI = numPoints - 1;
+  let dotX = chartX + (lastI / (pricePoints.length - 1)) * chartW;
+  let dotY = chartY + (1 - (pricePoints[lastI] - minP) / (maxP - minP)) * chartH;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 5*scale, 0, Math.PI*2);
+  ctx.fillStyle = RED;
+  ctx.shadowColor = RED;
+  ctx.shadowBlur = 15*scale;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Price labels
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = `500 ${11*scale}px 'JetBrains Mono'`;
+  ctx.textAlign = 'right';
+  ctx.fillText('$' + maxP, chartX - 5*scale, chartY + 5*scale);
+  ctx.fillText('$' + minP, chartX - 5*scale, chartY + chartH);
+
+  // Current price
+  let curPrice = pricePoints[lastI];
+  ctx.fillStyle = RED;
+  ctx.font = `700 ${14*scale}px 'JetBrains Mono'`;
+  ctx.textAlign = 'left';
+  ctx.fillText('$' + curPrice, dotX + 10*scale, dotY);
+
+  ctx.globalAlpha = 1;
+}
+
+// --- PNL CARD ---
+function drawPnlCard(x, y, pnl, pnlPct, price, alpha, glowIntensity) {
+  let w = 280 * scale;
+  let h = 100 * scale;
+
+  let glowColor = pnl >= 0 ? `rgba(178,237,104,${0.3 * glowIntensity})` : `rgba(255,77,77,0.3)`;
+  drawGlowRect(x, y, w, h, 14, 'rgba(178,237,104,0.08)', glowColor, 25 * glowIntensity);
+
+  ctx.globalAlpha = alpha;
+
+  // Border
+  ctx.strokeStyle = `rgba(178,237,104,${0.3 * glowIntensity})`;
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, 14 * scale);
+  ctx.stroke();
+
+  // YOUR PNL label
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `600 ${11*scale}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('YOUR P&L', x, y - 30*scale);
+
+  // PnL value
+  ctx.fillStyle = LIME;
+  ctx.font = `700 ${28*scale}px 'JetBrains Mono'`;
+  ctx.shadowColor = LIME;
+  ctx.shadowBlur = 15 * scale * glowIntensity;
+  ctx.fillText('+$' + pnl.toFixed(2), x, y + 2*scale);
+  ctx.shadowBlur = 0;
+
+  // Percentage
+  ctx.fillStyle = `rgba(178,237,104,0.7)`;
+  ctx.font = `500 ${13*scale}px 'JetBrains Mono'`;
+  ctx.fillText('+' + pnlPct.toFixed(1) + '%', x, y + 30*scale);
+
+  ctx.globalAlpha = 1;
+}
+
+// --- SHORT CARD ---
+function drawShortCard(x, y, alpha, glowPulse) {
+  let w = 320 * scale;
+  let h = 160 * scale;
+
+  // Glow
+  let glow = 0.3 + 0.2 * Math.sin(glowPulse * 3);
+  ctx.save();
+  ctx.shadowColor = `rgba(167,139,250,${glow})`;
+  ctx.shadowBlur = 30 * scale;
+  ctx.fillStyle = 'rgba(167,139,250,0.06)';
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, 16 * scale);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.globalAlpha = alpha;
+
+  // Border
+  ctx.strokeStyle = `rgba(167,139,250,${0.4 + 0.2 * Math.sin(glowPulse * 3)})`;
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  ctx.roundRect(x - w/2, y - h/2, w, h, 16 * scale);
+  ctx.stroke();
+
+  // SHORT badge
+  ctx.fillStyle = 'rgba(255,77,77,0.15)';
+  ctx.beginPath();
+  ctx.roundRect(x - 40*scale, y - 60*scale, 80*scale, 26*scale, 6*scale);
+  ctx.fill();
+  ctx.fillStyle = RED;
+  ctx.font = `700 ${13*scale}px 'JetBrains Mono'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('SHORT', x, y - 43*scale);
+
+  // Team name
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${22*scale}px 'Space Grotesk'`;
+  ctx.fillText('TOTTENHAM HOTSPUR', x, y - 12*scale);
+
+  // Price
+  ctx.fillStyle = PURPLE;
+  ctx.font = `600 ${18*scale}px 'JetBrains Mono'`;
+  ctx.fillText('$485.00', x, y + 18*scale);
+
+  // Leverage
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = `500 ${13*scale}px 'JetBrains Mono'`;
+  ctx.fillText('10x Leverage', x, y + 45*scale);
+
+  // Down arrow
+  ctx.fillStyle = RED;
+  ctx.font = `700 ${20*scale}px 'Space Grotesk'`;
+  ctx.textAlign = 'right';
+  ctx.fillText('\u2193', x + w/2 - 20*scale, y - 12*scale);
+
+  ctx.globalAlpha = 1;
+}
+
+// --- HEADLINE SYSTEM ---
+function drawHeadline(x, y, headline, price, pnl, progress, alpha) {
+  ctx.globalAlpha = alpha;
+
+  // Headline text
+  let headAlpha = easeOutCubic(clamp01(progress * 3));
+  ctx.globalAlpha = alpha * headAlpha;
+  ctx.fillStyle = RED;
+  ctx.font = `600 ${16*scale}px 'Space Grotesk'`;
+  ctx.textAlign = 'center';
+  ctx.fillText(headline, x, y - 20*scale);
+
+  // Price
+  let priceAlpha = easeOutCubic(clamp01((progress - 0.2) * 3));
+  ctx.globalAlpha = alpha * priceAlpha;
+  ctx.fillStyle = WHITE;
+  ctx.font = `700 ${22*scale}px 'JetBrains Mono'`;
+  ctx.fillText('$' + price, x, y + 14*scale);
+
+  // PnL
+  let pnlAlpha = easeOutCubic(clamp01((progress - 0.4) * 3));
+  ctx.globalAlpha = alpha * pnlAlpha;
+  ctx.fillStyle = LIME;
+  ctx.font = `600 ${14*scale}px 'JetBrains Mono'`;
+  ctx.shadowColor = LIME;
+  ctx.shadowBlur = 8*scale;
+  ctx.fillText('+$' + pnl.toFixed(2), x, y + 42*scale);
+  ctx.shadowBlur = 0;
+
+  ctx.globalAlpha = 1;
+}
+
+// --- AMBIENT PARTICLES ---
+let ambientParticles = [];
+for (let i = 0; i < 40; i++) {
+  ambientParticles.push({
+    x: Math.random() * 2000,
+    y: Math.random() * 2000,
+    size: 1 + Math.random() * 2,
+    speed: 5 + Math.random() * 15,
+    alpha: 0.1 + Math.random() * 0.2,
+    color: [PURPLE, RED, LIME][Math.floor(Math.random() * 3)]
+  });
+}
+
+function drawAmbient(t) {
+  ambientParticles.forEach(p => {
+    let px = ((p.x + t * p.speed * scale) % (W + 20)) - 10;
+    let py = p.y / 2000 * H;
+    ctx.globalAlpha = p.alpha * (0.5 + 0.5 * Math.sin(t * 0.5 + p.x));
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(px, py, p.size * scale, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// --- MAIN RENDER ---
+function render(timestamp) {
+  if (!startTime) startTime = timestamp;
+  let t = (timestamp - startTime) / 1000;
+  let dt = 1/60;
+
+  if (t > TOTAL_DURATION + 0.5) {
+    btn.style.display = 'block';
+  }
+
+  // Clear
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  let cx = W / 2;
+  let cy = H / 2;
+
+  drawAmbient(t);
+
+  // ============ PHASE 1: Dark moody opening (0-4s) ============
+  if (t >= 0 && t < 4.5) {
+    let p = t / 4;
+
+    // "You love Arsenal"
+    let t1 = clamp01(t / 1.2);
+    let a1 = easeOutCubic(t1);
+    let fade1 = t < 2.2 ? 1 : 1 - clamp01((t - 2.2) / 0.3);
+    drawText('You love Arsenal.', cx, cy - 60*scale, {
+      font: '700 38px Space Grotesk', color: WHITE,
+      alpha: a1 * fade1, glow: 'rgba(255,255,255,0.15)', glowSize: 15
+    });
+
+    // "But you HATE Tottenham"
+    if (t > 1.8) {
+      let t2 = clamp01((t - 1.8) / 0.8);
+      let a2 = easeOutElastic(t2);
+      let pulse = 1 + 0.03 * Math.sin(t * 6);
+      let fade2 = t < 3.8 ? 1 : 1 - clamp01((t - 3.8) / 0.5);
+      ctx.save();
+      ctx.translate(cx, cy + 30*scale);
+      ctx.scale(pulse, pulse);
+      drawText('But you HATE Tottenham.', 0, 0, {
+        font: '700 36px Space Grotesk', color: RED,
+        alpha: a2 * fade2, glow: RED, glowSize: 25
+      });
+      ctx.restore();
+    }
+
+    // Spurs logo dim
+    if (t > 2.5) {
+      let la = clamp01((t - 2.5) / 1) * 0.25;
+      let fade3 = t < 3.8 ? 1 : 1 - clamp01((t - 3.8) / 0.5);
+      drawSpursLogo(cx, cy + 140*scale, 80*scale, la * fade3);
+    }
+  }
+
+  // ============ PHASE 2: Short position opens (4-9s) ============
+  if (t >= 4 && t < 9.5) {
+    let p = (t - 4) / 5;
+    let enterA = easeOutCubic(clamp01((t - 4) / 0.8));
+    let exitA = t < 8.5 ? 1 : 1 - clamp01((t - 8.5) / 0.8);
+    let alpha = enterA * exitA;
+
+    drawShortCard(cx, cy - 40*scale, alpha, t);
+
+    // "SHORT SPURS @ $485 -- 10x leverage"
+    if (t > 5) {
+      let ta = easeOutCubic(clamp01((t - 5) / 0.6)) * exitA;
+      drawText('SHORT SPURS @ $485', cx, cy + 70*scale, {
+        font: '600 18px JetBrains Mono', color: PURPLE, alpha: ta, glow: PURPLE, glowSize: 15
+      });
+      drawText('10x Leverage', cx, cy + 100*scale, {
+        font: '500 14px JetBrains Mono', color: 'rgba(255,255,255,0.5)', alpha: ta
+      });
+    }
+
+    // Evil energy text
+    if (t > 6) {
+      let ta = (0.5 + 0.5 * Math.sin(t * 4)) * clamp01((t-6)/0.5) * exitA;
+      drawText('Betting against your rivals...', cx, cy + 150*scale, {
+        font: '500 15px Space Grotesk', color: RED, alpha: ta * 0.6
+      });
+    }
+  }
+
+  // ============ PHASE 3: Bad news rolling (9-14s) ============
+  if (t >= 9 && t < 14.5) {
+    let exitA = t < 13.5 ? 1 : 1 - clamp01((t - 13.5) / 0.8);
+
+    // Red rain active in this phase
+    let rainAlpha = clamp01((t - 9) / 0.5) * exitA;
+    if (rainAlpha > 0) {
+      redRain.forEach(r => { r.update(dt); r.alpha *= rainAlpha; r.draw(); r.alpha /= rainAlpha; });
+    }
+
+    // Headline 1: Manager sacked (9-10.5s)
+    let headlines = [
+      { start: 9, text: '"Manager sacked"', price: '465', pnl: 4.12 },
+      { start: 10.8, text: '"Star player injured"', price: '440', pnl: 9.28 },
+      { start: 12.3, text: '"3 losses in a row"', price: '410', pnl: 15.46 },
+    ];
+
+    headlines.forEach((hl, i) => {
+      if (t > hl.start) {
+        let hp = clamp01((t - hl.start) / 1.5);
+        let headAlpha = clamp01((t - hl.start) / 0.3);
+        // Fade out when next headline comes, or at phase end
+        let nextStart = i < headlines.length - 1 ? headlines[i+1].start : 14;
+        let headFade = i < headlines.length - 1 ? (1 - clamp01((t - (nextStart - 0.2)) / 0.3)) : 1;
+
+        let yOff = cy - 80*scale + i * 10*scale;
+        drawHeadline(cx, yOff, hl.text, hl.price, hl.pnl, hp, headAlpha * headFade * exitA);
+
+        // Spawn particles on headline appear
+        if (t - hl.start < dt * 2) {
+          for (let j = 0; j < 15; j++) {
+            particles.push(new Particle(
+              cx + (Math.random()-0.5) * 200*scale, yOff,
+              RED, (Math.random()-0.5)*150*scale, (Math.random()-0.5)*150*scale,
+              0.8 + Math.random() * 0.5, 2 + Math.random()*2
+            ));
+          }
+        }
+      }
+    });
+
+    // Running PnL display at bottom
+    let currentPnl = 0;
+    let currentPrice = 485;
+    if (t > 9.5) { currentPnl = 4.12; currentPrice = 465; }
+    if (t > 11.3) { currentPnl = 9.28; currentPrice = 440; }
+    if (t > 12.8) { currentPnl = 15.46; currentPrice = 410; }
+
+    let pnlEnter = easeOutCubic(clamp01((t - 9.5) / 0.5));
+    drawPnlCard(cx, cy + 100*scale, currentPnl, (currentPnl / 48.5) * 100, currentPrice, pnlEnter * exitA, 0.5 + 0.5 * (currentPnl / 15.46));
+  }
+
+  // ============ PHASE 4: Dramatic falling chart (14-19s) ============
+  if (t >= 14 && t < 19.5) {
+    let enterA = easeOutCubic(clamp01((t - 14) / 0.8));
+    let exitA = t < 18.5 ? 1 : 1 - clamp01((t - 18.5) / 0.8);
+    let alpha = enterA * exitA;
+
+    let chartProgress = easeInOutQuad(clamp01((t - 14.2) / 4));
+    drawPriceChart(cx, cy - 40*scale, 340*scale, 220*scale, chartProgress, alpha);
+
+    // PnL card growing
+    let pnlGrow = clamp01((t - 14.5) / 4);
+    let pnl = lerp(15.46, 29.9, pnlGrow);
+    let pnlPct = (pnl / 48.5) * 100;
+    drawPnlCard(cx, cy + 160*scale, pnl, pnlPct, Math.round(lerp(410, 340, pnlGrow)), alpha, 0.5 + pnlGrow * 0.5);
+
+    // Label
+    drawText('SPURS PRICE', cx, cy - 180*scale, {
+      font: '600 13px JetBrains Mono', color: RED, alpha: alpha * 0.6
+    });
+
+    // Their pain = your gain
+    if (t > 16) {
+      let ta = easeOutCubic(clamp01((t - 16) / 0.6)) * exitA;
+      drawText('Their pain = Your gain', cx, cy + 230*scale, {
+        font: '600 16px Space Grotesk', color: PURPLE, alpha: ta * 0.8, glow: PURPLE, glowSize: 10
+      });
+    }
+
+    // Keep red rain going lighter
+    let rainAlpha = 0.5 * alpha;
+    if (rainAlpha > 0) {
+      redRain.forEach(r => { r.update(dt); r.alpha *= rainAlpha; r.draw(); r.alpha /= rainAlpha; });
+    }
+  }
+
+  // ============ PHASE 5: Season end results (19-23s) ============
+  if (t >= 19 && t < 23.5) {
+    let enterA = easeOutCubic(clamp01((t - 19) / 0.6));
+    let exitA = t < 22.5 ? 1 : 1 - clamp01((t - 22.5) / 0.8);
+    let alpha = enterA * exitA;
+
+    // "Season end: Spurs finish 14th"
+    drawText('Season End', cx, cy - 140*scale, {
+      font: '700 16px JetBrains Mono', color: 'rgba(255,255,255,0.4)', alpha: alpha
+    });
+    drawText('Spurs finish 14th.', cx, cy - 100*scale, {
+      font: '700 30px Space Grotesk', color: RED, alpha: alpha, glow: RED, glowSize: 20
+    });
+
+    // Price
+    drawText('Price: $340', cx, cy - 55*scale, {
+      font: '600 18px JetBrains Mono', color: RED, alpha: alpha * 0.8
+    });
+
+    // Big PnL reveal
+    if (t > 19.8) {
+      let revealA = easeOutElastic(clamp01((t - 19.8) / 1.2));
+
+      // Card background
+      let cw = 340*scale, ch = 140*scale;
+      drawGlowRect(cx, cy + 30*scale, cw, ch, 16, 'rgba(178,237,104,0.1)', LIME, 35);
+
+      ctx.globalAlpha = alpha * revealA;
+      ctx.strokeStyle = `rgba(178,237,104,0.4)`;
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.roundRect(cx - cw/2, cy + 30*scale - ch/2, cw, ch, 16*scale);
+      ctx.stroke();
+
+      drawText('+29.9%', cx, cy + 8*scale, {
+        font: '700 40px JetBrains Mono', color: LIME, alpha: alpha * revealA, glow: LIME, glowSize: 30
+      });
+
+      drawText('x10 leverage = +299% return', cx, cy + 55*scale, {
+        font: '600 16px JetBrains Mono', color: LIME, alpha: alpha * revealA * 0.8
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Green burst at reveal
+    if (t > 19.8 && t < 20) {
+      for (let i = 0; i < 8; i++) {
+        greenBurst.push(new GreenBurstParticle(cx, cy + 30*scale));
+        dollarSigns.push(new DollarSign(cx, cy));
+      }
+    }
+  }
+
+  // ============ PHASE 6: Villain text (23-27s) ============
+  if (t >= 23 && t < 27.5) {
+    let exitA = t < 26.5 ? 1 : 1 - clamp01((t - 26.5) / 0.8);
+
+    // "You didn't just watch them lose."
+    let t1 = easeOutCubic(clamp01((t - 23) / 0.8));
+    let fade1 = t < 25 ? 1 : 1 - clamp01((t - 25) / 0.4);
+    drawText("You didn't just watch them lose.", cx, cy - 30*scale, {
+      font: '700 28px Space Grotesk', color: WHITE, alpha: t1 * fade1 * exitA
+    });
+
+    // "You profited from it."
+    if (t > 24.5) {
+      let t2 = easeOutElastic(clamp01((t - 24.5) / 1));
+      let pulse = 1 + 0.02 * Math.sin(t * 5);
+      ctx.save();
+      ctx.translate(cx, cy + 40*scale);
+      ctx.scale(pulse, pulse);
+      drawText('You profited from it.', 0, 0, {
+        font: '700 32px Space Grotesk', color: LIME, alpha: t2 * exitA, glow: LIME, glowSize: 25
+      });
+      ctx.restore();
+    }
+
+    // Devil emoji
+    if (t > 25.5) {
+      let da = easeOutBounce(clamp01((t - 25.5) / 0.6)) * exitA;
+      ctx.globalAlpha = da;
+      ctx.font = `${40*scale}px serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('\uD83D\uDE08', cx, cy + 110*scale);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ============ PHASE 7: Finale CTA (27-32s) ============
+  if (t >= 27) {
+    let enterA = easeOutCubic(clamp01((t - 27) / 0.8));
+
+    // "Long your team. Short your rivals."
+    let t1 = easeOutElastic(clamp01((t - 27.2) / 1));
+    drawText('Long your team.', cx, cy - 80*scale, {
+      font: '700 30px Space Grotesk', color: LIME, alpha: t1 * enterA, glow: LIME, glowSize: 20
+    });
+
+    if (t > 27.8) {
+      let t2 = easeOutElastic(clamp01((t - 27.8) / 1));
+      drawText('Short your rivals.', cx, cy - 30*scale, {
+        font: '700 30px Space Grotesk', color: RED, alpha: t2 * enterA, glow: RED, glowSize: 20
+      });
+    }
+
+    // "Every rivalry is a trade."
+    if (t > 28.8) {
+      let t3 = easeOutCubic(clamp01((t - 28.8) / 0.6));
+      drawText('Every rivalry is a trade.', cx, cy + 30*scale, {
+        font: '500 18px Space Grotesk', color: PURPLE, alpha: t3 * enterA
+      });
+    }
+
+    // notch.win CTA
+    if (t > 29.5) {
+      let t4 = easeOutElastic(clamp01((t - 29.5) / 1));
+      let glowPulse = 0.6 + 0.4 * Math.sin(t * 3);
+
+      // Glow background
+      let ctaW = 220*scale, ctaH = 56*scale;
+      ctx.save();
+      ctx.shadowColor = `rgba(178,237,104,${glowPulse * 0.5})`;
+      ctx.shadowBlur = 40 * scale;
+      ctx.fillStyle = `rgba(178,237,104,0.1)`;
+      ctx.beginPath();
+      ctx.roundRect(cx - ctaW/2, cy + 90*scale - ctaH/2, ctaW, ctaH, 30*scale);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.globalAlpha = t4 * enterA;
+      ctx.strokeStyle = `rgba(178,237,104,${0.5 + glowPulse * 0.3})`;
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.roundRect(cx - ctaW/2, cy + 90*scale - ctaH/2, ctaW, ctaH, 30*scale);
+      ctx.stroke();
+
+      drawText('notch.win', cx, cy + 90*scale, {
+        font: '700 24px Space Grotesk', color: LIME, alpha: t4 * enterA, glow: LIME, glowSize: 20
+      });
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // --- UPDATE & DRAW PARTICLES ---
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => { p.update(dt); p.draw(); });
+
+  greenBurst = greenBurst.filter(p => p.life > 0);
+  greenBurst.forEach(p => { p.update(dt); p.draw(); });
+
+  dollarSigns = dollarSigns.filter(p => p.life > 0);
+  dollarSigns.forEach(p => { p.update(dt); p.draw(); });
+
+  // --- PROGRESS BAR ---
+  if (t < TOTAL_DURATION + 0.5) drawProgressBar(t);
+
+  // --- VIGNETTE ---
+  let vGrad = ctx.createRadialGradient(cx, cy, H * 0.3, cx, cy, H * 0.85);
+  vGrad.addColorStop(0, 'rgba(10,12,16,0)');
+  vGrad.addColorStop(1, 'rgba(10,12,16,0.6)');
+  ctx.fillStyle = vGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  animFrame = requestAnimationFrame(render);
+}
+
+function startAnimation() {
+  btn.style.display = 'none';
+  startTime = null;
+  particles = [];
+  greenBurst = [];
+  dollarSigns = [];
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = requestAnimationFrame(render);
+}
+
+btn.addEventListener('click', startAnimation);
+startAnimation();
+</script>
+</body>
+</html>
