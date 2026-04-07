@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Same $50. Different outcome.</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;overflow:hidden;font-family:'Space Grotesk',sans-serif}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#bar{position:fixed;bottom:0;left:0;height:3px;background:#b2ed68;z-index:10}
+#btn{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#b2ed68;color:#000;border:none;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;padding:12px 28px;border-radius:99px;cursor:pointer;opacity:0;transition:opacity .6s;pointer-events:none;z-index:10}
+#btn.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<button id="btn" onclick="location.reload()">Watch again</button>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d');
+let W,H,cx,cy;
+function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;C.width=W*d;C.height=H*d;X.scale(d,d)}
+resize();addEventListener('resize',resize);
+
+const eo=t=>1-Math.pow(1-t,3),el=t=>t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-.75)*2.094)+1,
+ei=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,eb=t=>{const n=7.5625,d=2.75;if(t<1/d)return n*t*t;if(t<2/d)return n*(t-=1.5/d)*t+.75;if(t<2.5/d)return n*(t-=2.25/d)*t+.9375;return n*(t-=2.625/d)*t+.984375};
+
+const L='#b2ed68',R='#ff4d4d',WH='#fff',DM='#555',BD='#1c1e24',BG='#0a0c10',GOLD='#fbbf24';
+
+let parts=[];
+class P{constructor(x,y,c,vx,vy,l,sz){this.x=x;this.y=y;this.c=c;this.vx=vx;this.vy=vy;this.l=l;this.ml=l;this.s=sz||2}
+update(){this.x+=this.vx;this.y+=this.vy;this.vy+=.01;this.l--}
+draw(){const a=this.l/this.ml;X.globalAlpha=a;X.fillStyle=this.c;X.beginPath();X.arc(this.x,this.y,Math.max(.1,this.s*a),0,Math.PI*2);X.fill();X.globalAlpha=1}}
+function burst(x,y,c,n=50){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*6;parts.push(new P(x,y,c,Math.cos(a)*sp,Math.sin(a)*sp-2,35+Math.random()*30,1.5+Math.random()*3))}}
+function confetti(x,y,n=80){const cs=[L,'#60a5fa','#a78bfa','#f472b6',GOLD,WH];for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=2+Math.random()*8;parts.push(new P(x,y,cs[i%cs.length],Math.cos(a)*sp,Math.sin(a)*sp-5,50+Math.random()*40,2+Math.random()*3))}}
+function moneyRain(n=3){for(let i=0;i<n;i++)parts.push(new P(cx+(Math.random()-.5)*W*.6,-10,L,(Math.random()-.5)*.5,1+Math.random()*2,60+Math.random()*40,2+Math.random()*2))}
+
+function txt(t,x,y,{sz=40,c=WH,a=1,w='700',al='center',m=false,mw=0}={}){
+  X.globalAlpha=a;X.fillStyle=c;X.font=`${w} ${sz}px '${m?'JetBrains Mono':'Space Grotesk'}',sans-serif`;X.textAlign=al;X.textBaseline='middle';
+  if(mw)X.fillText(t,x,y,mw);else X.fillText(t,x,y);X.globalAlpha=1;
+}
+function rr(x,y,w,h,r,f,s,sw=1){X.beginPath();X.roundRect(x,y,w,h,r);if(f){X.fillStyle=f;X.fill()}if(s){X.strokeStyle=s;X.lineWidth=sw;X.stroke()}}
+function glow(x,y,r,c){if(!isFinite(x)||!isFinite(y)||r<=0)return;const g=X.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,c+'30');g.addColorStop(1,c+'00');X.fillStyle=g;X.fillRect(x-r,y-r,r*2,r*2)}
+
+// Animated counting number
+function countUp(target,progress){return Math.round(target*eo(progress))}
+
+const DUR=32000;
+let t0=null,gT=0;
+function gt(s,d){return Math.max(0,Math.min(1,(gT-s)/d))}
+
+function render(ts){
+  if(!t0)t0=ts;gT=ts-t0;
+  document.getElementById('bar').style.width=(Math.min(1,gT/DUR)*100)+'%';
+  X.clearRect(0,0,W,H);X.fillStyle=BG;X.fillRect(0,0,W,H);
+  parts=parts.filter(p=>p.l>0);parts.forEach(p=>{p.update();p.draw()});
+  const s=Math.min(W,H)/900;
+
+  // grid
+  X.globalAlpha=.012;X.strokeStyle=WH;X.lineWidth=.5;
+  for(let i=0;i<W;i+=50){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke()}
+  for(let i=0;i<H;i+=50){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke()}
+  X.globalAlpha=1;
+
+  // ═══ 1: THE $50 (0–4s) ═══
+  if(gT<4500){
+    const t=gt(0,4000),fo=gT>3500?1-(gT-3500)/1000:1;
+
+    // Big $50 bill / coin landing
+    const coinA=el(Math.min(1,t/.2))*fo;
+    // coin
+    glow(cx,cy-20*s,150,GOLD);
+    X.globalAlpha=coinA;
+    X.beginPath();X.arc(cx,cy-20*s,60*s,0,Math.PI*2);
+    X.fillStyle='#1a1710';X.fill();X.strokeStyle=GOLD+'80';X.lineWidth=3;X.stroke();
+    X.globalAlpha=1;
+    txt('$50',cx,cy-20*s,{sz:Math.round(32*s),c:GOLD,a:coinA,w:'700',m:true});
+
+    if(t>.01&&t<.04)burst(cx,cy-20*s,GOLD,40);
+
+    if(t>.25){
+      const h=eo((t-.25)/.2)*fo;
+      txt('Same fifty dollars.',cx,cy+70*s,{sz:Math.round(28*s),c:WH,a:h,w:'600'});
+    }
+    if(t>.45){
+      const h=eo((t-.45)/.2)*fo;
+      txt('Two completely different outcomes.',cx,cy+110*s,{sz:Math.round(22*s),c:'#888',a:h,w:'400'});
+    }
+  }
+
+  // ═══ 2: SPLIT — THE RACE BEGINS (4–6s) ═══
+  if(gT>3500&&gT<6500){
+    const t=gt(4000,2000),fo=gT>6000?1-(gT-6000)/500:1;
+
+    // $50 splits into two
+    const splitT=el(Math.min(1,t/.3));
+    const leftX=cx-splitT*180*s;
+    const rightX=cx+splitT*180*s;
+
+    // left coin - sportsbook
+    X.globalAlpha=fo;X.beginPath();X.arc(leftX,cy-40*s,35*s,0,Math.PI*2);
+    X.fillStyle='#1a1212';X.fill();X.strokeStyle=R+'60';X.lineWidth=2;X.stroke();X.globalAlpha=1;
+    txt('$50',leftX,cy-40*s,{sz:Math.round(18*s),c:R,a:fo,m:true,w:'700'});
+
+    // right coin - notch
+    glow(rightX,cy-40*s,80,L);
+    X.globalAlpha=fo;X.beginPath();X.arc(rightX,cy-40*s,35*s,0,Math.PI*2);
+    X.fillStyle='#101a10';X.fill();X.strokeStyle=L+'60';X.lineWidth=2;X.stroke();X.globalAlpha=1;
+    txt('$50',rightX,cy-40*s,{sz:Math.round(18*s),c:L,a:fo,m:true,w:'700'});
+
+    if(t>.3){
+      const la=eo((t-.3)/.3)*fo;
+      txt('Sportsbook',leftX,cy+10*s,{sz:Math.round(14*s),c:R,a:la,w:'600'});
+      txt('Notch',rightX,cy+10*s,{sz:Math.round(14*s),c:L,a:la,w:'600'});
+    }
+    if(t>.5){
+      const la=eo((t-.5)/.2)*fo;
+      txt('Bet: Arsenal to win Saturday',leftX,cy+40*s,{sz:Math.round(11*s),c:'#888',a:la,w:'400'});
+      txt('Long Arsenal @ $340',rightX,cy+40*s,{sz:Math.round(11*s),c:'#aaa',a:la,w:'400'});
+    }
+    if(t>.7){
+      const la=eo((t-.7)/.2)*fo;
+      txt('Let\'s watch what happens...',cx,cy+100*s,{sz:Math.round(18*s),c:DM,a:la,w:'400'});
+    }
+  }
+
+  // ═══ 3: WEEK BY WEEK — THE DIVERGENCE (6–16s) ═══
+  if(gT>6000&&gT<16500){
+    const t=gt(6500,9500),fi=eo(Math.min(1,t*4)),fo=t>.92?1-(t-.92)/.08:1,a=fi*fo;
+
+    const gap=50*s;
+    const colW=Math.min(260*s,(W-gap*3)/2);
+    const leftX=cx-gap/2-colW;
+    const rightX=cx+gap/2;
+    const topY=50*s;
+
+    // headers
+    txt('SPORTSBOOK',leftX+colW/2,topY,{sz:Math.round(12*s),c:R,a,m:true,w:'700'});
+    txt('NOTCH',rightX+colW/2,topY,{sz:Math.round(12*s),c:L,a,m:true,w:'700'});
+
+    // running balance labels
+    txt('Your $50',leftX+colW/2,topY+22*s,{sz:Math.round(10*s),c:DM,a:a*.6,w:'400'});
+    txt('Your $50',rightX+colW/2,topY+22*s,{sz:Math.round(10*s),c:DM,a:a*.6,w:'400'});
+
+    // divider
+    X.globalAlpha=a*.2;X.fillStyle=BD;X.fillRect(cx-1,topY+35*s,2,H-topY-80*s);X.globalAlpha=1;
+
+    // weeks
+    const weeks=[
+      {at:.02,week:'Week 1',event:'Arsenal win 3-0 ⚽',
+        sb:{result:'You win!',balance:105,delta:'+$55',col:L},
+        notch:{result:'Price → $358',balance:52.65,delta:'+$2.65',col:L}},
+      {at:.12,week:'Week 2',event:'Arsenal draw 1-1',
+        sb:{result:'You lose.',balance:0,delta:'-$50',col:R},
+        notch:{result:'Price → $355',balance:52.21,delta:'-$0.44',col:'#fbbf24'}},
+      {at:.22,week:'Week 3',event:'Arsenal win 2-1',
+        sb:{result:'Bet again: $50 → win',balance:105,delta:'+$55',col:L},
+        notch:{result:'Price → $372',balance:54.71,delta:'+$2.50',col:L}},
+      {at:.32,week:'Week 4',event:'Arsenal lose 0-2',
+        sb:{result:'You lose. Again.',balance:0,delta:'-$50',col:R},
+        notch:{result:'Price dips → $365',balance:53.68,delta:'-$1.03',col:'#fbbf24'}},
+      {at:.42,week:'Week 5–8',event:'3 wins, 1 draw',
+        sb:{result:'+$110, -$50 (net: +$60)',balance:60,delta:'Grinding...',col:'#888'},
+        notch:{result:'Price → $395',balance:58.09,delta:'+$8.09',col:L}},
+      {at:.55,week:'Week 9–16',event:'Strong run, 2 bad losses',
+        sb:{result:'+$165, -$100',balance:65,delta:'Still grinding',col:'#888'},
+        notch:{result:'Price → $412',balance:60.59,delta:'+$10.59',col:L}},
+      {at:.68,week:'Month 4–6',event:'Title race heats up 🔥',
+        sb:{result:'W: 8, L: 5 → net: +$90',balance:90,delta:'Up $40',col:'#aaa'},
+        notch:{result:'Price → $458',balance:67.35,delta:'+$17.35',col:L}},
+      {at:.82,week:'FULL SEASON',event:'Arsenal finish 2nd 🏆',
+        sb:{result:'26 bets. 15W, 11L.',balance:115,delta:'Net: +$65',col:'#aaa'},
+        notch:{result:'Price → $498',balance:73.24,delta:'+$23.24 (no leverage)',col:L}},
+    ];
+
+    const rowH=50*s;
+    weeks.forEach((wk,i)=>{
+      if(t>wk.at){
+        const wt=Math.min(1,(t-wk.at)/.08);
+        const wa=el(wt)*a;
+        const wy=topY+42*s+i*rowH;
+
+        // week label center
+        txt(wk.week,cx,wy+8*s,{sz:Math.round(9*s),c:DM,a:wa*.5,m:true,w:'500'});
+        txt(wk.event,cx,wy+24*s,{sz:Math.round(9*s),c:'#888',a:wa*.4,w:'400'});
+
+        // left card
+        X.globalAlpha=wa;rr(leftX,wy,colW,rowH-6*s,8,'#110e0e',wk.sb.col+'10');X.globalAlpha=1;
+        txt(wk.sb.result,leftX+10*s,wy+14*s,{sz:Math.round(10*s),c:'#999',a:wa,w:'400',al:'left',mw:colW-60*s});
+        txt(wk.sb.delta,leftX+colW-10*s,wy+14*s,{sz:Math.round(11*s),c:wk.sb.col,a:wa,m:true,w:'700',al:'right'});
+        // balance
+        txt('$'+wk.sb.balance,leftX+colW-10*s,wy+34*s,{sz:Math.round(14*s),c:WH,a:wa,m:true,w:'700',al:'right'});
+
+        // right card
+        X.globalAlpha=wa;rr(rightX,wy,colW,rowH-6*s,8,'#0e110e',wk.notch.col+'10');X.globalAlpha=1;
+        txt(wk.notch.result,rightX+10*s,wy+14*s,{sz:Math.round(10*s),c:'#bbb',a:wa,w:'400',al:'left',mw:colW-60*s});
+        txt(wk.notch.delta,rightX+colW-10*s,wy+14*s,{sz:Math.round(11*s),c:wk.notch.col,a:wa,m:true,w:'700',al:'right'});
+        txt('$'+wk.notch.balance.toFixed(2),rightX+colW-10*s,wy+34*s,{sz:Math.round(14*s),c:WH,a:wa,m:true,w:'700',al:'right'});
+
+        if(wt<.03)burst(rightX+colW/2,wy+rowH/2,L,8);
+      }
+    });
+  }
+
+  // ═══ 4: BUT WAIT — ADD LEVERAGE (16–20.5s) ═══
+  if(gT>16000&&gT<21000){
+    const t=gt(16500,4000),fi=eo(Math.min(1,t*3)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    if(t<.3){
+      const h=el(Math.min(1,t/.2))*a;
+      txt('"But wait — I only made $23?"',cx,cy-60*s,{sz:Math.round(28*s),c:'#888',a:h,w:'500'});
+      txt('That was without leverage.',cx,cy-15*s,{sz:Math.round(22*s),c:WH,a:h,w:'400'});
+    }
+
+    // Leverage multiplier animation
+    if(t>.25){
+      const levT=eo(Math.min(1,(t-.25)/.4));
+
+      // the multiplier cards
+      const leverages=[
+        {mult:'1x',profit:'$23',total:'$73'},
+        {mult:'3x',profit:'$70',total:'$120'},
+        {mult:'5x',profit:'$116',total:'$166'},
+        {mult:'10x',profit:'$232',total:'$282'},
+        {mult:'20x',profit:'$465',total:'$515'},
+      ];
+
+      const barW=Math.min(500*s,W-80);
+      const barX=cx-barW/2;
+      const barY=cy+20*s;
+
+      leverages.forEach((lv,i)=>{
+        const ld=.25+i*.08;
+        if(t>ld){
+          const lt=el(Math.min(1,(t-ld)/.15));
+          const la=lt*a;
+          const ly=barY+i*46*s;
+
+          // bar background
+          X.globalAlpha=la;rr(barX,ly,barW,38*s,8,'#10131a',L+'10');X.globalAlpha=1;
+
+          // multiplier label
+          txt(lv.mult,barX+30*s,ly+19*s,{sz:Math.round(14*s),c:i===0?DM:L,a:la,m:true,w:'700'});
+
+          // profit bar — grows with multiplier
+          const barFill=Math.min(1,(parseInt(lv.profit.slice(1))/465));
+          const fillW=(barW-120*s)*barFill*lt;
+          if(fillW>0){
+            X.globalAlpha=la*.6;
+            rr(barX+70*s,ly+8,fillW,22*s,4,i===0?'#333':L+'30');
+            X.globalAlpha=1;
+          }
+
+          // profit text
+          txt(lv.profit,barX+80*s+fillW,ly+19*s,{sz:Math.round(13*s),c:i===0?'#888':L,a:la,m:true,w:'600',al:'left'});
+
+          // total
+          txt(lv.total,barX+barW-10*s,ly+19*s,{sz:Math.round(16*s),c:i===0?'#888':WH,a:la,m:true,w:'700',al:'right'});
+
+          if(i===4&&lt>.95&&lt<1)burst(barX+barW-40*s,ly+19*s,L,25);
+        }
+      });
+
+      // vs sportsbook reminder
+      if(t>.7){
+        const vs=eo((t-.7)/.15)*a;
+        const vsY=barY+5*46*s+20*s;
+        X.globalAlpha=vs;rr(barX,vsY,barW,38*s,8,'#1a1212',R+'15');X.globalAlpha=1;
+        txt('Sportsbook',barX+30*s,vsY+19*s,{sz:Math.round(14*s),c:R,a:vs,w:'600'});
+        txt('26 bets, 15 wins needed →',barX+barW/2,vsY+19*s,{sz:Math.round(11*s),c:'#888',a:vs,w:'400'});
+        txt('$115',barX+barW-10*s,vsY+19*s,{sz:Math.round(16*s),c:R,a:vs,m:true,w:'700',al:'right'});
+      }
+    }
+  }
+
+  // ═══ 5: THE FINAL SCOREBOARD (20.5–26s) ═══
+  if(gT>20500&&gT<26500){
+    const t=gt(21000,5000),fi=eo(Math.min(1,t*3)),fo=t>.9?1-(t-.9)/.1:1,a=fi*fo;
+
+    txt('Same $50. Same team. Same season.',cx,60*s,{sz:Math.round(16*s),c:DM,a,w:'400'});
+
+    const cardW=260*s,cardH=200*s,gap=40*s;
+    const ly=cx-gap/2-cardW,ry=cx+gap/2;
+    const cardTop=cy-cardH/2;
+
+    // SPORTSBOOK card
+    if(t>.05){
+      const ct=el(Math.min(1,(t-.05)/.2))*a;
+      X.globalAlpha=ct;rr(ly,cardTop,cardW,cardH,16,'#12100e',R+'20',1.5);X.globalAlpha=1;
+
+      txt('SPORTSBOOK',ly+cardW/2,cardTop+24*s,{sz:Math.round(11*s),c:R,a:ct,m:true,w:'700'});
+      // effort stats
+      txt('26',ly+cardW/2,cardTop+60*s,{sz:Math.round(40*s),c:'#888',a:ct,m:true});
+      txt('separate bets placed',ly+cardW/2,cardTop+85*s,{sz:Math.round(11*s),c:DM,a:ct,w:'400'});
+
+      txt('15W / 11L',ly+cardW/2,cardTop+112*s,{sz:Math.round(14*s),c:'#888',a:ct,m:true,w:'500'});
+      txt('57% win rate needed',ly+cardW/2,cardTop+132*s,{sz:Math.round(10*s),c:DM,a:ct*.7,w:'400'});
+
+      // final balance
+      if(t>.2){
+        const ba=el(Math.min(1,(t-.2)/.15))*a;
+        const bal=countUp(115,Math.min(1,(t-.2)/.3));
+        txt('$'+bal,ly+cardW/2,cardTop+168*s,{sz:Math.round(36*s),c:R,a:ba,m:true,w:'700'});
+      }
+    }
+
+    // NOTCH card
+    if(t>.15){
+      const ct=el(Math.min(1,(t-.15)/.2))*a;
+      glow(ry+cardW/2,cardTop+cardH/2,200,L);
+      X.globalAlpha=ct;rr(ry,cardTop,cardW,cardH,16,'#0c120e',L+'30',1.5);X.globalAlpha=1;
+
+      txt('NOTCH (5x)',ry+cardW/2,cardTop+24*s,{sz:Math.round(11*s),c:L,a:ct,m:true,w:'700'});
+
+      txt('1',ry+cardW/2,cardTop+60*s,{sz:Math.round(40*s),c:L,a:ct,m:true});
+      txt('position opened',ry+cardW/2,cardTop+85*s,{sz:Math.round(11*s),c:DM,a:ct,w:'400'});
+
+      txt('Just be right on the trend',ry+cardW/2,cardTop+112*s,{sz:Math.round(12*s),c:'#aaa',a:ct,w:'400'});
+      txt('No weekly grind',ry+cardW/2,cardTop+132*s,{sz:Math.round(10*s),c:DM,a:ct*.7,w:'400'});
+
+      if(t>.25){
+        const ba=el(Math.min(1,(t-.25)/.15))*a;
+        const bal=countUp(166,Math.min(1,(t-.25)/.3));
+        txt('$'+bal,ry+cardW/2,cardTop+168*s,{sz:Math.round(36*s),c:L,a:ba,m:true,w:'700'});
+        if(t>.26&&t<.29)burst(ry+cardW/2,cardTop+168*s,L,30);
+      }
+    }
+
+    // delta callout
+    if(t>.4){
+      const da=el(Math.min(1,(t-.4)/.15))*a;
+      txt('+44% more profit. 1 trade instead of 26.',cx,cardTop+cardH+30*s,{sz:Math.round(18*s),c:L,a:da,w:'600'});
+    }
+
+    // 20x callout
+    if(t>.55){
+      const xa=el(Math.min(1,(t-.55)/.15))*a;
+      txt('With 20x leverage?',cx,cardTop+cardH+70*s,{sz:Math.round(16*s),c:DM,a:xa,w:'400'});
+      if(t>.6){
+        const xb=el(Math.min(1,(t-.6)/.15))*a;
+        const bigBal=countUp(515,Math.min(1,(t-.6)/.3));
+        txt('$'+bigBal,cx,cardTop+cardH+105*s,{sz:Math.round(48*s),c:GOLD,a:xb,m:true,w:'700'});
+        txt('from the same $50',cx,cardTop+cardH+135*s,{sz:Math.round(14*s),c:GOLD,a:xb*.6,w:'400'});
+        if(t>.61&&t<.64){burst(cx,cardTop+cardH+105*s,GOLD,50);moneyRain(8)}
+      }
+    }
+  }
+
+  // ═══ 6: FINALE (26–32s) ═══
+  if(gT>25500){
+    const t=gt(26000,6000);
+
+    // money rain in background
+    if(t>.1&&t<.8&&Math.random()<.06)moneyRain(1);
+
+    if(t>.0){const h=el(Math.min(1,t/.18));txt('Stop grinding bets.',cx,cy-80*s,{sz:Math.round(36*s),c:'#888',a:h,w:'500'})}
+    if(t>.08){const h=el(Math.min(1,(t-.08)/.18));txt('Start building a position.',cx,cy-30*s,{sz:Math.round(44*s),c:WH,a:h})}
+    if(t>.2){
+      const h=el(Math.min(1,(t-.2)/.18));
+      txt('One trade. All season. More profit.',cx,cy+25*s,{sz:Math.round(32*s),c:L,a:h});
+      if(t>.21&&t<.24)confetti(cx,cy+25*s,100);
+    }
+
+    // CTA
+    if(t>.42){
+      const ct=eo((t-.42)/.1);
+      const ctaY=cy+100*s;
+      glow(cx,ctaY,100,L);
+      X.globalAlpha=ct;rr(cx-110*s,ctaY-24*s,220*s,48*s,99,L);X.globalAlpha=1;
+      txt('Join the waitlist',cx,ctaY,{sz:Math.round(16*s),c:'#000',a:ct,w:'700'});
+      if(Math.random()<.1)parts.push(new P(cx+(Math.random()-.5)*240*s,ctaY,L,(Math.random()-.5)*1,-Math.random()*2,18,1.5));
+    }
+    if(t>.47)txt('notch.win',cx,cy+145*s,{sz:Math.round(13*s),c:L,a:eo((t-.47)/.08)*.5,m:true,w:'500'});
+
+    if(t>=1)document.getElementById('btn').classList.add('on');
+  }
+
+  if(gT<DUR+3000)requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

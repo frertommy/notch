@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Prove It</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;overflow:hidden;font-family:'Space Grotesk',sans-serif}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#bar{position:fixed;bottom:0;left:0;height:3px;background:#b2ed68;z-index:10}
+#btn{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#b2ed68;color:#000;border:none;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;padding:12px 28px;border-radius:99px;cursor:pointer;opacity:0;transition:opacity .6s;pointer-events:none;z-index:10}
+#btn.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<button id="btn" onclick="location.reload()">Watch again</button>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d');
+let W,H,cx,cy;
+function resize(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;C.width=W*d;C.height=H*d;X.scale(d,d)}
+resize();addEventListener('resize',resize);
+
+const eo=t=>1-Math.pow(1-t,3),
+el=t=>t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-.75)*2.094)+1,
+eb=t=>{const n=7.5625,d=2.75;if(t<1/d)return n*t*t;if(t<2/d)return n*(t-=1.5/d)*t+.75;if(t<2.5/d)return n*(t-=2.25/d)*t+.9375;return n*(t-=2.625/d)*t+.984375},
+ei=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+const L='#b2ed68',R='#ff4d4d',BLU='#60a5fa',WH='#fff',DM='#555',BD='#1c1e24',BG='#0a0c10';
+
+let parts=[];
+class P{constructor(x,y,c,vx,vy,l,sz){this.x=x;this.y=y;this.c=c;this.vx=vx;this.vy=vy;this.l=l;this.ml=l;this.s=sz||2}
+update(){this.x+=this.vx;this.y+=this.vy;this.vy+=.012;this.l--}
+draw(){const a=this.l/this.ml;X.globalAlpha=a;X.fillStyle=this.c;X.beginPath();X.arc(this.x,this.y,Math.max(.1,this.s*a),0,Math.PI*2);X.fill();X.globalAlpha=1}}
+function burst(x,y,c,n=50){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*6;parts.push(new P(x,y,c,Math.cos(a)*sp,Math.sin(a)*sp-2,35+Math.random()*30,1.5+Math.random()*3))}}
+function confetti(x,y,n=80){const cs=[L,BLU,'#a78bfa','#f472b6','#fbbf24',WH];for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=2+Math.random()*8;parts.push(new P(x,y,cs[i%cs.length],Math.cos(a)*sp,Math.sin(a)*sp-5,50+Math.random()*40,2+Math.random()*3))}}
+function sparks(x,y,c,n=8){for(let i=0;i<n;i++)parts.push(new P(x+(Math.random()-.5)*40,y+(Math.random()-.5)*20,c,(Math.random()-.5)*2,-Math.random()*2,20+Math.random()*15,1+Math.random()))}
+
+function txt(t,x,y,{sz=40,c=WH,a=1,w='700',al='center',m=false,bl='middle'}={}){X.globalAlpha=a;X.fillStyle=c;X.font=`${w} ${sz}px '${m?'JetBrains Mono':'Space Grotesk'}',sans-serif`;X.textAlign=al;X.textBaseline=bl;X.fillText(t,x,y);X.globalAlpha=1}
+function rr(x,y,w,h,r,f,s,sw=1){X.beginPath();X.roundRect(x,y,w,h,r);if(f){X.fillStyle=f;X.fill()}if(s){X.strokeStyle=s;X.lineWidth=sw;X.stroke()}}
+function glow(x,y,r,c){if(!isFinite(x)||!isFinite(y)||!isFinite(r)||r<=0)return;const g=X.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,c+'30');g.addColorStop(1,c+'00');X.fillStyle=g;X.fillRect(x-r,y-r,r*2,r*2)}
+
+// chat bubbles
+function bubble(x,y,w,text_,align,color,alpha,tailSide){
+  X.save();X.globalAlpha=alpha;
+  const h=36,r=14;
+  const bx=align==='left'?x:x-w;
+  rr(bx,y-h/2,w,h,r,color);
+  X.globalAlpha=1;
+  txt(text_,align==='left'?bx+14:bx+w-14,y,{sz:12,c:align==='left'?'#000':WH,a:alpha,w:'600',al:align==='left'?'left':'right'});
+  X.restore();
+}
+
+// avatar
+function avatar(x,y,r,color,letter,alpha){
+  X.globalAlpha=alpha;
+  X.fillStyle=color;X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();
+  X.globalAlpha=1;
+  txt(letter,x,y,{sz:r*.9,c:'#000',a:alpha,w:'700'});
+}
+
+// dual price lines
+function dualLines(x,y,w,h,prog,alpha){
+  // Arsenal line (goes up)
+  const ptsA=[.30,.31,.33,.35,.38,.40,.38,.40,.43,.45,.44,.46,.50,.52,.50,.53,.55,.58,.56,.60,.62,.65,.64,.66,.70,.72,.68,.72,.75,.78,.76,.80,.82,.85];
+  // Spurs line (goes down-ish)
+  const ptsS=[.55,.54,.52,.53,.50,.48,.50,.48,.45,.46,.44,.42,.44,.40,.42,.38,.40,.36,.38,.34,.36,.32,.34,.30,.32,.28,.30,.26,.28,.24,.22,.24,.20,.18];
+  const n=Math.floor(prog*ptsA.length);
+
+  // Arsenal
+  X.beginPath();
+  for(let i=0;i<=n;i++){const px=x+(i/ptsA.length)*w,py=y+h-ptsA[i]*h;if(i===0)X.moveTo(px,py);else X.lineTo(px,py)}
+  X.strokeStyle='#EF0107';X.lineWidth=2.5;X.globalAlpha=alpha;X.stroke();
+  if(n>0){const lx=x+(n/ptsA.length)*w,ly=y+h-ptsA[n]*h;X.fillStyle='#EF0107';X.beginPath();X.arc(lx,ly,4,0,Math.PI*2);X.fill();glow(lx,ly,20,'#EF0107')}
+
+  // Spurs
+  X.beginPath();
+  for(let i=0;i<=n;i++){const px=x+(i/ptsS.length)*w,py=y+h-ptsS[i]*h;if(i===0)X.moveTo(px,py);else X.lineTo(px,py)}
+  X.strokeStyle='#132257';X.lineWidth=2.5;X.globalAlpha=alpha;X.stroke();
+  if(n>0){const lx=x+(n/ptsS.length)*w,ly=y+h-ptsS[n]*h;X.fillStyle='#132257';X.beginPath();X.arc(lx,ly,4,0,Math.PI*2);X.fill()}
+
+  X.globalAlpha=1;
+}
+
+const DUR=30000;
+let t0=null,gT=0;
+function gt(s,d){return Math.max(0,Math.min(1,(gT-s)/d))}
+
+function render(ts){
+  if(!t0)t0=ts;gT=ts-t0;
+  document.getElementById('bar').style.width=(Math.min(1,gT/DUR)*100)+'%';
+  X.clearRect(0,0,W,H);X.fillStyle=BG;X.fillRect(0,0,W,H);
+
+  // subtle grid
+  X.globalAlpha=.015;X.strokeStyle=WH;X.lineWidth=.5;
+  for(let i=0;i<W;i+=50){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke()}
+  for(let i=0;i<H;i+=50){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke()}
+  X.globalAlpha=1;
+
+  parts=parts.filter(p=>p.l>0);parts.forEach(p=>{p.update();p.draw()});
+  const s=Math.min(W,H)/900;
+
+  // ═══ 1: THE ARGUMENT (0–5.5s) ═══
+  // Two friends texting — classic banter
+  if(gT<6000){
+    const t=gt(0,5500),fo=gT>5000?1-(gT-5000)/1000:1;
+
+    // Phone frame
+    const pw=260*s,ph=420*s;
+    X.globalAlpha=eo(Math.min(1,t*5))*fo;
+    rr(cx-pw/2,cy-ph/2,pw,ph,28*s,'#111316','#2a2d34',1.5);
+    // status bar
+    rr(cx-40*s,cy-ph/2+6,80*s,16*s,8*s,'#0a0c10');
+    X.globalAlpha=1;
+
+    const msgs=[
+      {at:.05,from:'left',text:'Arsenal are winning it this year',color:'#EF0107',name:'You'},
+      {at:.15,from:'right',text:'Lol no chance. Spurs are clear.',color:'#132257',name:'Mate'},
+      {at:.28,from:'left',text:'Bet on it then',color:'#EF0107'},
+      {at:.38,from:'right',text:'Already did. $50 on Spurs Saturday',color:'#132257'},
+      {at:.50,from:'left',text:'That dies in 90 minutes...',color:'#EF0107'},
+      {at:.60,from:'right',text:'So?',color:'#132257'},
+      {at:.72,from:'left',text:'What if you could back Spurs ALL SEASON?',color:'#EF0107'},
+      {at:.82,from:'right',text:'... how?',color:'#132257'},
+    ];
+
+    let yOff=cy-ph/2+60*s;
+    msgs.forEach((msg,i)=>{
+      if(t>msg.at){
+        const mt=Math.min(1,(t-msg.at)/.06);
+        const ma=el(mt)*fo;
+        const isLeft=msg.from==='left';
+        const bx=isLeft?cx-pw/2+16*s:cx+pw/2-16*s;
+        const bw=Math.min(190*s,pw-50*s);
+        const by=yOff;
+
+        // avatar
+        if(i<2||!msgs[i-1]||msgs[i-1].from!==msg.from){
+          const ax=isLeft?cx-pw/2+28*s:cx+pw/2-28*s;
+          avatar(ax,by,10*s,msg.color,isLeft?'Y':'M',ma);
+        }
+
+        // bubble
+        const bubbleX=isLeft?cx-pw/2+44*s:cx+pw/2-44*s;
+        X.globalAlpha=ma;
+        const bx2=isLeft?bubbleX:bubbleX-bw;
+        rr(bx2,by-16*s,bw,32*s,12*s,isLeft?'#1a2030':msg.color+'25',isLeft?'#EF0107'+'30':'#132257'+'40');
+        X.globalAlpha=1;
+        txt(msg.text,isLeft?bx2+12*s:bx2+bw-12*s,by,{sz:Math.round(11*s),c:isLeft?WH:'#ccc',a:ma,w:'500',al:isLeft?'left':'right'});
+
+        if(mt<.04)sparks(bubbleX,by,msg.color,4);
+        yOff+=40*s;
+      }
+    });
+  }
+
+  // ═══ 2: THE REVEAL — "This is how" (5.5–8s) ═══
+  if(gT>5000&&gT<8500){
+    const t=gt(5500,2500),fo=gT>8000?1-(gT-8000)/500:1;
+
+    if(t<.4){
+      const h=el(t/.4)*fo;
+      txt('What if you could',cx,cy-30*s,{sz:Math.round(36*s),c:'#888',a:h,w:'500'});
+      txt('back your team all season?',cx,cy+20*s,{sz:Math.round(42*s),c:WH,a:h});
+    }
+    if(t>.35){
+      const h2=el(Math.min(1,(t-.35)/.3))*fo;
+      txt('And your mate could back theirs.',cx,cy+75*s,{sz:Math.round(28*s),c:BLU,a:h2,w:'500'});
+    }
+    if(t>.65){
+      const h3=el(Math.min(1,(t-.65)/.25))*fo;
+      txt('Let the season decide who\'s right.',cx,cy+130*s,{sz:Math.round(22*s),c:L,a:h3,w:'600'});
+      if(t>.66&&t<.7)burst(cx,cy+130*s,L,40);
+    }
+  }
+
+  // ═══ 3: TWO POSITIONS OPEN (8–11.5s) ═══
+  if(gT>7500&&gT<12000){
+    const t=gt(8000,3500),fi=eo(Math.min(1,t*4)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    const cardW=200*s,cardH=130*s,gap=40*s;
+    const lx=cx-gap/2-cardW,rx=cx+gap/2;
+    const cardY=cy-cardH/2;
+
+    // YOU — Arsenal long
+    if(t>.05){
+      const ct=el(Math.min(1,(t-.05)/.2));
+      const ca=ct*a;
+      glow(lx+cardW/2,cardY+cardH/2,150,'#EF0107');
+      X.globalAlpha=ca;rr(lx,cardY,cardW,cardH,14*s,'#12080a','#EF0107'+'50',1.5);X.globalAlpha=1;
+
+      avatar(lx+28*s,cardY+28*s,14*s,'#EF0107','Y',ca);
+      txt('YOU',lx+50*s,cardY+28*s,{sz:Math.round(12*s),c:'#EF0107',a:ca,w:'600',al:'left'});
+
+      txt('LONG ARSENAL',lx+cardW/2,cardY+60*s,{sz:Math.round(11*s),c:'#EF0107',a:ca,m:true,w:'700'});
+      txt('$340',lx+cardW/2,cardY+85*s,{sz:Math.round(28*s),c:WH,a:ca,w:'700'});
+      txt('Entry price',lx+cardW/2,cardY+108*s,{sz:Math.round(9*s),c:DM,a:ca,w:'400'});
+
+      if(ct>.95&&ct<1)burst(lx+cardW/2,cardY+cardH/2,'#EF0107',30);
+    }
+
+    // VS
+    if(t>.15){
+      const vt=eb(Math.min(1,(t-.15)/.15))*a;
+      txt('VS',cx,cy,{sz:Math.round(24*s),c:DM,a:vt*.6,w:'700'});
+    }
+
+    // MATE — Spurs long
+    if(t>.2){
+      const ct=el(Math.min(1,(t-.2)/.2));
+      const ca=ct*a;
+      glow(rx+cardW/2,cardY+cardH/2,150,'#132257');
+      X.globalAlpha=ca;rr(rx,cardY,cardW,cardH,14*s,'#080a14','#132257'+'80',1.5);X.globalAlpha=1;
+
+      avatar(rx+28*s,cardY+28*s,14*s,'#132257','M',ca);
+      txt('MATE',rx+50*s,cardY+28*s,{sz:Math.round(12*s),c:BLU,a:ca,w:'600',al:'left'});
+
+      txt('LONG SPURS',rx+cardW/2,cardY+60*s,{sz:Math.round(11*s),c:BLU,a:ca,m:true,w:'700'});
+      txt('$285',rx+cardW/2,cardY+85*s,{sz:Math.round(28*s),c:WH,a:ca,w:'700'});
+      txt('Entry price',rx+cardW/2,cardY+108*s,{sz:Math.round(9*s),c:DM,a:ca,w:'400'});
+
+      if(ct>.95&&ct<1)burst(rx+cardW/2,cardY+cardH/2,'#132257',30);
+    }
+
+    // Bottom text
+    if(t>.5){
+      const bt=eo((t-.5)/.2)*a;
+      txt('Same conviction. No expiry. Let it ride.',cx,cy+cardH/2+50*s,{sz:Math.round(16*s),c:L,a:bt,w:'500'});
+    }
+  }
+
+  // ═══ 4: THE SEASON UNFOLDS (11.5–21s) ═══
+  if(gT>11000&&gT<21500){
+    const t=gt(11500,9500),fi=eo(Math.min(1,t*3)),fo=t>.92?1-(t-.92)/.08:1,a=fi*fo;
+
+    // Chart area
+    const chartW=Math.min(560*s,W-60),chartH=200*s;
+    const chartX=cx-chartW/2,chartY=cy-20*s;
+
+    // bg
+    X.globalAlpha=a*.9;rr(chartX-24,chartY-80*s,chartW+48,chartH+140*s,14,'#0c0f16',BD);X.globalAlpha=1;
+
+    // header
+    txt('THE SEASON',cx,chartY-58*s,{sz:Math.round(12*s),c:DM,a,m:true,w:'500'});
+
+    // avatars in header
+    avatar(cx-80*s,chartY-35*s,10*s,'#EF0107','Y',a);
+    txt('Arsenal',cx-60*s,chartY-35*s,{sz:Math.round(13*s),c:'#EF0107',a,w:'600',al:'left'});
+    avatar(cx+30*s,chartY-35*s,10*s,'#132257','M',a);
+    txt('Spurs',cx+50*s,chartY-35*s,{sz:Math.round(13*s),c:BLU,a,w:'600',al:'left'});
+
+    // grid
+    X.globalAlpha=a*.08;X.strokeStyle=WH;X.lineWidth=.5;
+    for(let i=0;i<5;i++){const gy=chartY+i*(chartH/4);X.beginPath();X.moveTo(chartX,gy);X.lineTo(chartX+chartW,gy);X.stroke()}
+    X.globalAlpha=1;
+
+    // dual lines
+    const lineProg=ei(Math.min(1,(t-.05)/.7));
+    dualLines(chartX,chartY,chartW,chartH,lineProg,a);
+
+    // months
+    const months=['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'];
+    months.forEach((m,i)=>{
+      txt(m,chartX+(i/(months.length-1))*chartW,chartY+chartH+14*s,{sz:Math.round(8*s),c:DM,a:a*.5,m:true,w:'400'});
+    });
+
+    // Story events
+    const events=[
+      {at:.08,text:'⚽ Arsenal beat Spurs 3-0',y:-1,c:'#EF0107'},
+      {at:.18,text:'📈 Arsenal top 4',y:-1,c:'#EF0107'},
+      {at:.25,text:'😬 Spurs lose 3 in a row',y:1,c:'#ff6b6b'},
+      {at:.35,text:'🔥 Arsenal win streak',y:-1,c:'#EF0107'},
+      {at:.42,text:'💰 Spurs sign new striker',y:1,c:BLU},
+      {at:.50,text:'📉 Bounce fades fast',y:1,c:'#ff6b6b'},
+      {at:.58,text:'🏆 Arsenal in title race',y:-1,c:'#EF0107'},
+      {at:.68,text:'😩 Spurs slip to 8th',y:1,c:'#ff6b6b'},
+      {at:.78,text:'🚀 Arsenal close to title',y:-1,c:L},
+    ];
+
+    events.forEach(ev=>{
+      if(t>ev.at&&t<ev.at+.07){
+        const et=(t-ev.at)/.07;
+        const ea=et<.15?et/.15:et>.65?(1-et)/.35:1;
+        const ey=ev.y<0?chartY-10*s:chartY+chartH+35*s;
+        txt(ev.text,cx,ey,{sz:Math.round(13*s),c:ev.c,a:ea*a,w:'500'});
+        if(et<.03)sparks(cx,ey,ev.c,5);
+      }
+    });
+
+    // Live PnL counters at right
+    if(t>.15){
+      const pnlT=Math.min(1,(t-.15)/.6);
+      const arsPrice=340+pnlT*72;
+      const spurPrice=285-pnlT*52;
+      const arsPnl=((arsPrice-340)/340*100).toFixed(1);
+      const spurPnl=((spurPrice-285)/285*100).toFixed(1);
+
+      const px=chartX+chartW+18;
+      // Arsenal PnL
+      txt('$'+arsPrice.toFixed(0),px,chartY+20*s,{sz:Math.round(16*s),c:WH,a:a,m:true,w:'700',al:'left'});
+      txt('+'+arsPnl+'%',px,chartY+38*s,{sz:Math.round(12*s),c:L,a:a,m:true,w:'700',al:'left'});
+      // Spurs PnL
+      txt('$'+spurPrice.toFixed(0),px,chartY+chartH-20*s,{sz:Math.round(16*s),c:WH,a:a,m:true,w:'700',al:'left'});
+      txt(spurPnl+'%',px,chartY+chartH-2*s,{sz:Math.round(12*s),c:R,a:a,m:true,w:'700',al:'left'});
+    }
+
+    // Score cards at end
+    if(t>.82){
+      const sc=eo(Math.min(1,(t-.82)/.1))*a;
+      // YOU WIN
+      const wy=chartY+chartH+60*s;
+      X.globalAlpha=sc;rr(cx-200*s,wy,180*s,50*s,10,L+'15',L+'40');X.globalAlpha=1;
+      avatar(cx-180*s,wy+25*s,12*s,'#EF0107','Y',sc);
+      txt('YOU',cx-155*s,wy+16*s,{sz:Math.round(11*s),c:L,a:sc,w:'700',al:'left'});
+      txt('+21.2%  🎉',cx-155*s,wy+34*s,{sz:Math.round(14*s),c:L,a:sc,m:true,w:'700',al:'left'});
+
+      // MATE LOSES
+      X.globalAlpha=sc;rr(cx+20*s,wy,180*s,50*s,10,R+'10',R+'30');X.globalAlpha=1;
+      avatar(cx+40*s,wy+25*s,12*s,'#132257','M',sc);
+      txt('MATE',cx+65*s,wy+16*s,{sz:Math.round(11*s),c:R,a:sc,w:'700',al:'left'});
+      txt('-18.2%  😬',cx+65*s,wy+34*s,{sz:Math.round(14*s),c:R,a:sc,m:true,w:'700',al:'left'});
+
+      if(t>.83&&t<.86)burst(cx-110*s,wy+25*s,L,40);
+    }
+  }
+
+  // ═══ 5: THE BANTER (21–24.5s) ═══
+  if(gT>20500&&gT<25000){
+    const t=gt(21000,3500),fo=t>.88?1-(t-.88)/.12:1;
+
+    // Final texts
+    const msgs2=[
+      {at:.0,from:'left',text:'Told you Arsenal were clear 😎',color:L},
+      {at:.15,from:'right',text:'Whatever... double or nothing next season?',color:'#888'},
+      {at:.35,from:'left',text:'Already holding 🚀',color:L},
+    ];
+
+    const pw=280*s;
+    let yOff2=cy-60*s;
+    msgs2.forEach((msg,i)=>{
+      if(t>msg.at){
+        const mt=Math.min(1,(t-msg.at)/.1);
+        const ma=el(mt)*fo;
+        const isLeft=msg.from==='left';
+        const bw=Math.min(220*s,pw-30*s);
+        const bx=isLeft?cx-pw/2+20*s:cx+pw/2-20*s-bw;
+
+        X.globalAlpha=ma;
+        rr(bx,yOff2-16*s,bw,36*s,14*s,isLeft?L+'20':('#ffffff'+'08'),isLeft?L+'40':'#333');
+        X.globalAlpha=1;
+        txt(msg.text,isLeft?bx+14*s:bx+bw-14*s,yOff2+2,{sz:Math.round(13*s),c:isLeft?L:'#999',a:ma,w:'600',al:isLeft?'left':'right'});
+
+        if(mt<.04)sparks(isLeft?bx:bx+bw,yOff2,isLeft?L:'#555',4);
+        yOff2+=50*s;
+      }
+    });
+
+    if(t>.6){
+      const h=eo((t-.6)/.15)*fo;
+      txt('"Already holding" — the flex that never existed before Notch.',cx,cy+100*s,{sz:Math.round(14*s),c:DM,a:h,w:'400'});
+    }
+  }
+
+  // ═══ 6: FINALE (24.5–30s) ═══
+  if(gT>24000){
+    const t=gt(24500,5500);
+
+    if(t>.0){
+      const t1=el(Math.min(1,t/.2));
+      txt('Talk is cheap.',cx,cy-80*s,{sz:Math.round(48*s),a:t1});
+    }
+    if(t>.1){
+      const t2=el(Math.min(1,(t-.1)/.2));
+      txt('Back your team.',cx,cy-20*s,{sz:Math.round(56*s),c:L,a:t2});
+      if(t>.11&&t<.14)confetti(cx,cy-20*s,100);
+    }
+    if(t>.25){
+      const t3=eo((t-.25)/.15);
+      txt('All season. No expiry. Prove it.',cx,cy+40*s,{sz:Math.round(22*s),c:'#888',a:t3,w:'500'});
+    }
+
+    // CTA
+    if(t>.45){
+      const ct=eo((t-.45)/.12);
+      const ctaY=cy+110*s;
+      glow(cx,ctaY,100,L);
+      X.globalAlpha=ct;rr(cx-110*s,ctaY-24*s,220*s,48*s,99,L);X.globalAlpha=1;
+      txt('Join the waitlist',cx,ctaY,{sz:Math.round(16*s),c:'#000',a:ct,w:'700'});
+      if(Math.random()<.12)parts.push(new P(cx+(Math.random()-.5)*240*s,ctaY,L,(Math.random()-.5)*1,-Math.random()*2,18,1.5));
+    }
+    if(t>.5)txt('notch.win',cx,cy+155*s,{sz:Math.round(13*s),c:L,a:eo((t-.5)/.1)*.5,m:true,w:'500'});
+
+    if(t>=1)document.getElementById('btn').classList.add('on');
+  }
+
+  if(gT<DUR+3000)requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

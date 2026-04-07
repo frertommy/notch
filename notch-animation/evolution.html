@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — The Evolution</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;overflow:hidden;font-family:'Space Grotesk',sans-serif}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#progress{position:fixed;bottom:0;left:0;height:3px;background:#b2ed68;z-index:10;transition:width .1s}
+#replay{position:fixed;bottom:30px;right:30px;background:#b2ed68;color:#000;border:none;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;padding:10px 24px;border-radius:8px;cursor:pointer;opacity:0;transition:opacity .5s;pointer-events:none;z-index:10}
+#replay.show{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="progress"></div>
+<button id="replay" onclick="location.reload()">↻ Replay</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const prog = document.getElementById('progress');
+const replayBtn = document.getElementById('replay');
+let W, H, cx, cy, dpr;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  cx = W / 2; cy = H / 2;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const ease = {
+  out: t => 1 - Math.pow(1 - t, 3),
+  inOut: t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2,
+  elastic: t => t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-0.75)*(2*Math.PI)/3)+1,
+  bounce: t => {const n1=7.5625,d1=2.75;if(t<1/d1)return n1*t*t;if(t<2/d1)return n1*(t-=1.5/d1)*t+.75;if(t<2.5/d1)return n1*(t-=2.25/d1)*t+.9375;return n1*(t-=2.625/d1)*t+.984375;}
+};
+
+const LIME='#b2ed68',RED='#ff4d4d',PURPLE='#a78bfa',BLUE='#60a5fa',BG='#0a0c10',WHITE='#fff',DIM='#6b7280',BORDER='#1e2028';
+
+// Particles
+class Particle {
+  constructor(x,y,color,vx,vy,life,size){this.x=x;this.y=y;this.color=color;this.vx=vx;this.vy=vy;this.life=life;this.maxLife=life;this.size=size||2}
+  update(){this.x+=this.vx;this.y+=this.vy;this.vy+=0.02;this.life--}
+  draw(){const a=this.life/this.maxLife;ctx.globalAlpha=a;ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(this.x,this.y,Math.max(0,this.size*a),0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+}
+let particles=[];
+function burst(x,y,color,count=40){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*5;particles.push(new Particle(x,y,color,Math.cos(a)*sp,Math.sin(a)*sp-2,40+Math.random()*30,1.5+Math.random()*3))}}
+function sparkle(x,y,color,count=6){for(let i=0;i<count;i++)particles.push(new Particle(x+(Math.random()-.5)*80,y+(Math.random()-.5)*30,color,(Math.random()-.5)*1,-Math.random()*2,25+Math.random()*20,1+Math.random()*1.5))}
+
+const TOTAL=24000;
+let startTime=null,globalT=0;
+function getT(start,dur){return Math.max(0,Math.min(1,(globalT-start)/dur))}
+
+function text(t,x,y,{size=40,color=WHITE,alpha=1,weight='700',align='center',mono=false}={}){
+  ctx.globalAlpha=alpha;ctx.fillStyle=color;
+  ctx.font=`${weight} ${size}px '${mono?'JetBrains Mono':'Space Grotesk'}',sans-serif`;
+  ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(t,x,y);ctx.globalAlpha=1;
+}
+function rr(x,y,w,h,r,fill,stroke,sw=1){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=sw;ctx.stroke()}}
+function glow(x,y,r,color){const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color+'30');g.addColorStop(1,color+'00');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
+
+// Floating orbs
+const orbs=Array.from({length:6},()=>({x:Math.random(),y:Math.random(),r:120+Math.random()*300,color:[LIME,PURPLE,BLUE,RED][Math.floor(Math.random()*4)],sp:0.0002+Math.random()*0.0003,ph:Math.random()*Math.PI*2}));
+function drawOrbs(t){orbs.forEach(o=>{glow(o.x*W+Math.sin(t*o.sp*1000+o.ph)*120,o.y*H+Math.cos(t*o.sp*800+o.ph)*90,o.r,o.color)})}
+
+// Grid
+function drawGrid(a=0.025){ctx.globalAlpha=a;ctx.strokeStyle=WHITE;ctx.lineWidth=.5;const g=60;for(let x=0;x<W;x+=g){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}for(let y=0;y<H;y+=g){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}ctx.globalAlpha=1}
+
+// Ticket
+function drawTicket(x,y,sc,al,rot=0){
+  ctx.save();ctx.globalAlpha=al;ctx.translate(x,y);ctx.rotate(rot);ctx.scale(sc,sc);
+  const tw=220,th=110;
+  rr(-tw/2,-th/2,tw,th,8,'#1a1d24','#2a2d34');
+  ctx.setLineDash([4,4]);ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-tw/2+15,-th/2+32);ctx.lineTo(tw/2-15,-th/2+32);ctx.stroke();ctx.setLineDash([]);
+  text('MATCH BET',0,-th/2+17,{size:11,color:RED,mono:true,weight:'500'});
+  text('Arsenal vs Chelsea',0,-th/2+52,{size:15,color:'#ccc',weight:'500'});
+  text('Expires: 90 min',0,-th/2+76,{size:11,color:DIM,mono:true,weight:'400'});
+  // logos
+  ctx.fillStyle=RED;ctx.beginPath();ctx.arc(-40,-th/2+96,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=BLUE;ctx.beginPath();ctx.arc(40,-th/2+96,8,0,Math.PI*2);ctx.fill();
+  text('ARS',- 40,-th/2+96,{size:7,color:'#000',weight:'700'});
+  text('CHE',40,-th/2+96,{size:7,color:'#000',weight:'700'});
+  ctx.restore();
+}
+
+// Notch card
+function drawCard(x,y,sc,al,pnl='+5.3%',price='$358'){
+  ctx.save();ctx.globalAlpha=al;ctx.translate(x,y);ctx.scale(sc,sc);
+  const tw=240,th=120;
+  glow(0,0,140,LIME);
+  rr(-tw/2,-th/2,tw,th,12,'#0d1015',LIME+'50',1.5);
+  text('LONG  ARSENAL',0,-th/2+20,{size:11,color:LIME,mono:true,weight:'700'});
+  text(price,0,-th/2+52,{size:32,color:WHITE,weight:'700'});
+  text(pnl,0,-th/2+82,{size:18,color:LIME,mono:true,weight:'700'});
+  text('PERPETUAL',0,-th/2+106,{size:9,color:DIM,mono:true,weight:'400'});
+  ctx.restore();
+}
+
+// Sawtooth
+function drawSaw(x,y,w,h,prog,color=RED){
+  const teeth=6;ctx.beginPath();ctx.moveTo(x,y+h);
+  for(let i=0;i<teeth;i++){const toothEnd=Math.min(1,prog*teeth-i);if(toothEnd<=0)break;
+  const x1=x+(i/teeth)*w,px=x+((i+.75)/teeth)*w,rx=x+((i+1)/teeth)*w,py=y+h*.12+Math.sin(i*1.5)*h*.12;
+  if(toothEnd<.75){const s=toothEnd/.75;ctx.lineTo(x1+(px-x1)*s,(y+h)+(py-(y+h))*s)}else{ctx.lineTo(px,py);const s=(toothEnd-.75)/.25;ctx.lineTo(px+(rx-px)*s,py+((y+h)-py)*s)}}
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.stroke();
+}
+
+function drawStair(x,y,w,h,prog,color=LIME){
+  const steps=7;ctx.beginPath();let curY=y+h;ctx.moveTo(x,curY);
+  for(let i=0;i<steps;i++){const se=Math.min(1,prog*steps-i);if(se<=0)break;
+  const sx=x+(i/steps)*w,ex=x+((i+1)/steps)*w,stepH=h*(.08+i*.022),tY=curY-stepH;
+  if(se<.3){const s=se/.3;ctx.lineTo(sx,curY-stepH*ease.elastic(s))}else{curY=tY;ctx.lineTo(sx,curY);const s=(se-.3)/.7;ctx.lineTo(sx+(ex-sx)*s,curY)}}
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.stroke();
+  // fill
+  const lastX=x+Math.min(1,prog)*w;ctx.lineTo(lastX,y+h);ctx.lineTo(x,y+h);ctx.closePath();ctx.fillStyle=color+'08';ctx.fill();
+}
+
+// Price line animation
+function drawPriceLine(x, y, w, h, prog, alpha) {
+  ctx.globalAlpha = alpha;
+  const points = [0,.02,.05,.04,.08,.12,.10,.14,.18,.16,.20,.24,.28,.25,.30,.35,.32,.38,.42,.40,.38,.42,.48,.52,.50,.55,.60,.58,.63,.68,.72,.70,.75,.78,.82,.80,.78,.82,.88,.92];
+  ctx.beginPath();
+  const n = Math.floor(prog * points.length);
+  for (let i = 0; i <= n; i++) {
+    const px = x + (i / points.length) * w;
+    const py = y + h - points[i] * h;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.strokeStyle = LIME;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // dot at end
+  if (n > 0 && n < points.length) {
+    const ex = x + (n / points.length) * w;
+    const ey = y + h - points[n] * h;
+    ctx.fillStyle = LIME;
+    ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI * 2); ctx.fill();
+    glow(ex, ey, 30, LIME);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ══════ RENDER ══════
+function render(ts) {
+  if (!startTime) startTime = ts;
+  globalT = ts - startTime;
+  prog.style.width = (Math.min(1, globalT / TOTAL) * 100) + '%';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,H);
+  drawOrbs(globalT);
+  drawGrid();
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => { p.update(); p.draw() });
+
+  const s = Math.min(W, H) / 900;
+
+  // ═══ SCENE 1: TITLE (0-3.5s) ═══
+  if (globalT < 4000) {
+    const t = getT(0, 3000);
+    const fo = globalT > 3000 ? 1 - (globalT - 3000) / 1000 : 1;
+    const t1 = ease.out(Math.min(1, t * 2.5));
+    text('BETS DIE.', cx, cy - 36 * s, { size: Math.round(76 * s), alpha: t1 * fo });
+    if (t > .25) {
+      const t2 = ease.elastic(Math.min(1, (t - .25) / .5));
+      text('YOUR TEAM DOESN\'T.', cx, cy + 50 * s, { size: Math.round(76 * s), color: LIME, alpha: t2 * fo });
+      if (t > .26 && t < .3) burst(cx, cy + 50 * s, LIME, 70);
+    }
+    if (t > .7) {
+      text('Scroll through time →', cx, cy + 140 * s, { size: Math.round(14 * s), color: DIM, alpha: ease.out((t-.7)/.3) * fo, mono: true, weight: '400' });
+    }
+  }
+
+  // ═══ SCENE 2: OLD WAY — TICKET LIFECYCLE (3.5-8.5s) ═══
+  if (globalT > 3000 && globalT < 9000) {
+    const t = getT(3500, 5000);
+    const fi = ease.out(Math.min(1, t * 4));
+    const fo = t > .88 ? 1 - (t - .88) / .12 : 1;
+    const a = fi * fo;
+
+    // header
+    text('THE OLD WAY', cx, 60 * s, { size: Math.round(12 * s), color: RED, alpha: a, mono: true, weight: '700' });
+    text('Sportsbooks · Polymarket', cx, 90 * s, { size: Math.round(28 * s), color: '#777', alpha: a, weight: '600' });
+
+    // Phase 1: ticket appears
+    if (t < .3) {
+      const ap = ease.elastic(t / .3);
+      drawTicket(cx, cy, ap * s, a);
+    }
+    // Phase 2: countdown
+    else if (t < .55) {
+      drawTicket(cx, cy, s, a);
+      const ct = (t - .3) / .25;
+      const mins = Math.round(90 - ct * 90);
+      // countdown ring
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 100 * s, 36 * s, -Math.PI / 2, -Math.PI / 2 + (1 - ct) * Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      text(mins + "'", cx, cy + 100 * s, { size: Math.round(28 * s), color: RED, alpha: a, mono: true });
+      if (Math.random() < .15) sparkle(cx + (Math.random()-.5)*80*s, cy + 100*s, RED, 2);
+    }
+    // Phase 3: SHATTER
+    else if (t < .75) {
+      const sh = (t - .55) / .2;
+      if (sh < .03) burst(cx, cy, RED, 100);
+
+      // flying fragments
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2 + sh;
+        const dist = sh * 350 * s;
+        const fa = (1 - sh) * fo;
+        ctx.save(); ctx.globalAlpha = fa;
+        ctx.translate(cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist);
+        ctx.rotate(ang + sh * 4);
+        rr(-18*s, -10*s, 36*s, 20*s, 3, '#1a1d24', RED+'80');
+        ctx.restore();
+      }
+
+      // EXPIRED stamp
+      const stamp = ease.bounce(Math.min(1, sh * 2.5));
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-.12); ctx.scale(stamp, stamp);
+      // stamp bg
+      rr(-120*s, -35*s, 240*s, 70*s, 6, RED+'18', RED, 3);
+      text('EXPIRED', 0, 0, { size: Math.round(52 * s), color: RED, alpha: .95 * fo });
+      ctx.restore();
+    }
+    // Phase 4: aftermath
+    else {
+      const aft = (t - .75) / .25;
+      const aftA = ease.out(aft) * fo;
+      // tombstone
+      ctx.globalAlpha = aftA;
+      rr(cx - 100*s, cy - 60*s, 200*s, 120*s, 12, '#111318', BORDER);
+      ctx.globalAlpha = 1;
+      text('☠️', cx, cy - 20*s, { size: Math.round(40*s), alpha: aftA });
+      text('$0.00', cx, cy + 15*s, { size: Math.round(24*s), color: RED, alpha: aftA, mono: true });
+      text('Position value', cx, cy + 40*s, { size: Math.round(11*s), color: DIM, alpha: aftA, weight: '400' });
+      text('Game over. Deposit again.', cx, cy + 100*s, { size: Math.round(16*s), color: '#555', alpha: aftA, weight: '400' });
+    }
+  }
+
+  // ═══ SCENE 3: NOTCH WAY — POSITION LIVES (8.5-15s) ═══
+  if (globalT > 8000 && globalT < 15500) {
+    const t = getT(8500, 6500);
+    const fi = ease.out(Math.min(1, t * 4));
+    const fo = t > .9 ? 1 - (t - .9) / .1 : 1;
+    const a = fi * fo;
+
+    text('THE NOTCH WAY', cx, 55 * s, { size: Math.round(12 * s), color: LIME, alpha: a, mono: true, weight: '700' });
+    text('Perpetual Team Trading', cx, 85 * s, { size: Math.round(28 * s), color: WHITE, alpha: a, weight: '600' });
+
+    // Price chart drawing itself across bottom half
+    const chartX = cx - 300*s, chartY = cy - 30*s, chartW = 600*s, chartH = 200*s;
+    if (t > .05) {
+      const lineT = ease.inOut(Math.min(1, (t - .05) / .7));
+      // axis
+      ctx.globalAlpha = a * .3;
+      ctx.strokeStyle = BORDER;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(chartX, chartY); ctx.lineTo(chartX, chartY + chartH); ctx.lineTo(chartX + chartW, chartY + chartH); ctx.stroke();
+      ctx.globalAlpha = 1;
+      drawPriceLine(chartX, chartY, chartW, chartH, lineT, a);
+    }
+
+    // Events popping in along the timeline
+    const events = [
+      { at: .15, label: 'Win vs Chelsea', emoji: '⚽', x: .12 },
+      { at: .28, label: 'UCL draw', emoji: '🏆', x: .25 },
+      { at: .38, label: 'Saka injury', emoji: '🏥', x: .35 },
+      { at: .48, label: '3-match streak', emoji: '🔥', x: .48 },
+      { at: .58, label: 'Transfer window', emoji: '💰', x: .58 },
+      { at: .68, label: 'Top of table', emoji: '📈', x: .72 },
+      { at: .78, label: 'Title race heats up', emoji: '🚀', x: .85 },
+    ];
+    events.forEach(ev => {
+      if (t > ev.at) {
+        const evT = Math.min(1, (t - ev.at) / .08);
+        const evA = ease.elastic(evT) * a;
+        const ex = chartX + ev.x * chartW;
+        const ey = chartY + chartH + 30*s;
+        // vertical line
+        ctx.globalAlpha = evA * .2;
+        ctx.strokeStyle = LIME;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(ex, chartY); ctx.lineTo(ex, chartY + chartH); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        text(ev.emoji, ex, ey, { size: Math.round(16*s), alpha: evA });
+        text(ev.label, ex, ey + 18*s, { size: Math.round(9*s), color: LIME, alpha: evA*.8, mono: true, weight: '400' });
+        if (evT < .05) sparkle(ex, chartY + chartH * .5, LIME, 4);
+      }
+    });
+
+    // PnL counter
+    if (t > .2) {
+      const prices = [[.2,'$340','+0.0%'],[.3,'$348','+2.4%'],[.42,'$358','+5.3%'],[.48,'$351','+3.2%'],[.6,'$378','+11.2%'],[.72,'$395','+16.2%'],[.82,'$412','+21.2%']];
+      let cur = prices[0];
+      for (const p of prices) if (t >= p[0]) cur = p;
+      const cardY = cy - 120 * s;
+      drawCard(cx, cardY, s * .85, a, cur[2], cur[1]);
+
+      // Pulse ring when card is live
+      if (t > .3 && t < .85) {
+        const pulseT = ((t - .3) * 15) % 1;
+        ctx.globalAlpha = (1 - pulseT) * .1 * a;
+        ctx.strokeStyle = LIME;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, cardY, 130*s + pulseT * 30*s, 0, Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // "STILL OPEN" badge
+    if (t > .8) {
+      const badge = ease.elastic(Math.min(1, (t-.8)/.1));
+      ctx.globalAlpha = badge * fo;
+      const bx = cx + 150*s, by = cy - 120*s - 40*s;
+      rr(bx - 50*s, by - 12*s, 100*s, 24*s, 12*s, LIME);
+      ctx.globalAlpha = 1;
+      text('STILL OPEN', bx, by, { size: Math.round(10*s), color: '#000', alpha: badge * fo, mono: true, weight: '700' });
+    }
+  }
+
+  // ═══ SCENE 4: SIDE-BY-SIDE LIQUIDITY (15-19.5s) ═══
+  if (globalT > 14500 && globalT < 20000) {
+    const t = getT(15000, 4500);
+    const fi = ease.out(Math.min(1, t * 4));
+    const fo = t > .88 ? 1 - (t - .88) / .12 : 1;
+    const a = fi * fo;
+
+    text('LIQUIDITY', cx, 60*s, { size: Math.round(52*s), alpha: a });
+
+    const cw = 260*s, ch = 150*s, gap = 30*s;
+    const lx = cx - gap - cw, rx = cx + gap, cy2 = cy - 20*s;
+
+    // panels
+    ctx.globalAlpha = a;
+    rr(lx-16, cy2-16, cw+32, ch+60, 10, '#0d0f14', BORDER);
+    rr(rx-16, cy2-16, cw+32, ch+60, 10, '#0d0f14', LIME+'25');
+    ctx.globalAlpha = 1;
+
+    text('SPORTSBOOK', lx + cw/2, cy2 - 28*s, { size: Math.round(11*s), color: RED, alpha: a, mono: true, weight: '700' });
+    text('Resets every event', lx + cw/2, cy2 + ch + 24, { size: Math.round(10*s), color: '#555', alpha: a, weight: '400' });
+
+    text('NOTCH', rx + cw/2, cy2 - 28*s, { size: Math.round(11*s), color: LIME, alpha: a, mono: true, weight: '700' });
+    text('Compounds forever', rx + cw/2, cy2 + ch + 24, { size: Math.round(10*s), color: LIME, alpha: a, weight: '500' });
+
+    const cp = ease.inOut(Math.min(1, (t - .12) / .55));
+    ctx.globalAlpha = a;
+    drawSaw(lx, cy2, cw, ch, cp, RED);
+    ctx.globalAlpha = a;
+    drawStair(rx, cy2, cw, ch, cp, LIME);
+    ctx.globalAlpha = 1;
+
+    // X marks on sawtooth
+    if (t > .5) {
+      const xA = ease.out((t-.5)/.2) * a;
+      for (let i = 0; i < 5; i++) {
+        const xx = lx + ((i+1)/6)*cw;
+        ctx.globalAlpha = xA;
+        ctx.strokeStyle = RED;
+        ctx.lineWidth = 2;
+        const sz = 6*s;
+        ctx.beginPath(); ctx.moveTo(xx-sz, cy2+ch-sz); ctx.lineTo(xx+sz, cy2+ch+sz); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xx+sz, cy2+ch-sz); ctx.lineTo(xx-sz, cy2+ch+sz); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Checkmarks on staircase
+    if (t > .55) {
+      const chA = ease.out((t-.55)/.2) * a;
+      text('✓', rx + cw - 20*s, cy2 + 30*s, { size: Math.round(28*s), color: LIME, alpha: chA });
+    }
+  }
+
+  // ═══ SCENE 5: FINALE (19.5-24s) ═══
+  if (globalT > 19000) {
+    const t = getT(19500, 4500);
+    const fi = ease.out(Math.min(1, t * 3));
+
+    // Big text
+    if (t > 0) {
+      const tt = ease.elastic(Math.min(1, t / .3));
+      text('TRADE TEAMS.', cx, cy - 80*s, { size: Math.round(64*s), alpha: tt });
+      if (t > .01 && t < .04) burst(cx, cy - 80*s, WHITE, 30);
+    }
+    if (t > .1) {
+      const tt = ease.elastic(Math.min(1, (t-.1)/.3));
+      text('NOT MOMENTS.', cx, cy - 5*s, { size: Math.round(64*s), color: LIME, alpha: tt });
+      if (t > .11 && t < .14) burst(cx, cy - 5*s, LIME, 80);
+    }
+
+    // Stats
+    const stats = [
+      { v: '98', l: 'TEAMS', d: .3 },
+      { v: '24/7', l: 'ALWAYS ON', d: .38 },
+      { v: '0%', l: 'HOUSE EDGE', d: .46 },
+      { v: '∞', l: 'HOLD FOREVER', d: .54 },
+    ];
+    stats.forEach((st, i) => {
+      if (t > st.d) {
+        const stT = ease.elastic(Math.min(1, (t - st.d) / .25));
+        const sx = cx + (i - 1.5) * 140 * s;
+        const sy = cy + 100 * s;
+        ctx.globalAlpha = stT;
+        rr(sx-52*s, sy-28*s, 104*s, 64*s, 8, '#0e1014', LIME+'25');
+        ctx.globalAlpha = 1;
+        text(st.v, sx, sy - 4*s, { size: Math.round(26*s), color: LIME, alpha: stT, mono: true });
+        text(st.l, sx, sy + 22*s, { size: Math.round(8*s), color: DIM, alpha: stT, mono: true, weight: '500' });
+      }
+    });
+
+    // CTA
+    if (t > .7) {
+      const ct = ease.out((t-.7)/.15);
+      const ctaY = cy + 180*s;
+      // glow behind
+      glow(cx, ctaY, 120, LIME);
+      ctx.globalAlpha = ct;
+      rr(cx-90*s, ctaY-20*s, 180*s, 40*s, 10, LIME);
+      ctx.globalAlpha = 1;
+      text('notch.win', cx, ctaY, { size: Math.round(17*s), color: '#000', alpha: ct, weight: '700' });
+      if (Math.random() < .15) sparkle(cx + (Math.random()-.5)*200*s, ctaY, LIME, 2);
+    }
+
+    if (t >= 1) replayBtn.classList.add('show');
+  }
+
+  if (globalT < TOTAL + 3000) requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

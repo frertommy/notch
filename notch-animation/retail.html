@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Your Team. Your Trade.</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;overflow:hidden;font-family:'Space Grotesk',sans-serif}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%}
+#bar{position:fixed;bottom:0;left:0;height:3px;background:#b2ed68;z-index:10}
+#again{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#b2ed68;color:#000;border:none;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;padding:12px 28px;border-radius:99px;cursor:pointer;opacity:0;transition:opacity .6s;pointer-events:none;z-index:10}
+#again.on{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="bar"></div>
+<button id="again" onclick="location.reload()">Watch again</button>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d'),bar=document.getElementById('bar'),btn=document.getElementById('again');
+let W,H,cx,cy,dpr;
+function resize(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;cx=W/2;cy=H/2;C.width=W*dpr;C.height=H*dpr;X.scale(dpr,dpr)}
+resize();addEventListener('resize',resize);
+
+// easing
+const eo=t=>1-Math.pow(1-t,3), ei=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,
+  el=t=>t===0?0:t===1?1:Math.pow(2,-10*t)*Math.sin((t*10-.75)*2.094)+1,
+  eb=t=>{const n=7.5625,d=2.75;if(t<1/d)return n*t*t;if(t<2/d)return n*(t-=1.5/d)*t+.75;if(t<2.5/d)return n*(t-=2.25/d)*t+.9375;return n*(t-=2.625/d)*t+.984375};
+
+const LIME='#b2ed68',RED='#ff4d4d',BG='#0a0c10',WH='#ffffff',DIM='#555',BORD='#1c1e24';
+const TEAMS=[
+  {name:'Arsenal',short:'ARS',color:'#EF0107',bg:'#1a0507'},
+  {name:'Barcelona',short:'BAR',color:'#A50044',bg:'#1a050e'},
+  {name:'Bayern',short:'BAY',color:'#DC052D',bg:'#1a0509'},
+  {name:'Man City',short:'MCI',color:'#6CABDD',bg:'#0a1520'},
+  {name:'Real Madrid',short:'RMA',color:'#FEBE10',bg:'#1a1805'},
+  {name:'PSG',short:'PSG',color:'#004170',bg:'#050e1a'},
+  {name:'Liverpool',short:'LIV',color:'#C8102E',bg:'#1a0508'},
+  {name:'Juventus',short:'JUV',color:'#ffffff',bg:'#141414'},
+];
+
+// particles
+let parts=[];
+class P{constructor(x,y,c,vx,vy,l,sz){this.x=x;this.y=y;this.c=c;this.vx=vx;this.vy=vy;this.l=l;this.ml=l;this.s=sz||2}
+update(){this.x+=this.vx;this.y+=this.vy;this.vy+=.015;this.l--}
+draw(){const a=this.l/this.ml;X.globalAlpha=a;X.fillStyle=this.c;X.beginPath();X.arc(this.x,this.y,Math.max(0,this.s*a),0,Math.PI*2);X.fill();X.globalAlpha=1}}
+function burst(x,y,c,n=50){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=1+Math.random()*6;parts.push(new P(x,y,c,Math.cos(a)*sp,Math.sin(a)*sp-2,35+Math.random()*30,1.5+Math.random()*3))}}
+function confetti(x,y,n=60){const cols=[LIME,'#60a5fa','#a78bfa','#f472b6','#fbbf24'];for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=2+Math.random()*7;parts.push(new P(x,y,cols[i%cols.length],Math.cos(a)*sp,Math.sin(a)*sp-4,50+Math.random()*40,2+Math.random()*3))}}
+function rain(y,c,n=12){for(let i=0;i<n;i++)parts.push(new P(Math.random()*W,y,c,(Math.random()-.5)*.5,Math.random()*1+.5,30+Math.random()*20,1+Math.random()))}
+
+// helpers
+function txt(t,x,y,{sz=40,c=WH,a=1,w='700',al='center',m=false}={}){X.globalAlpha=a;X.fillStyle=c;X.font=`${w} ${sz}px '${m?'JetBrains Mono':'Space Grotesk'}',sans-serif`;X.textAlign=al;X.textBaseline='middle';X.fillText(t,x,y);X.globalAlpha=1}
+function rr(x,y,w,h,r,f,s,sw=1){X.beginPath();X.roundRect(x,y,w,h,r);if(f){X.fillStyle=f;X.fill()}if(s){X.strokeStyle=s;X.lineWidth=sw;X.stroke()}}
+function glow(x,y,r,c){const g=X.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,c+'35');g.addColorStop(1,c+'00');X.fillStyle=g;X.fillRect(x-r,y-r,r*2,r*2)}
+function grid(a=.02){X.globalAlpha=a;X.strokeStyle=WH;X.lineWidth=.5;for(let x=0;x<W;x+=50){X.beginPath();X.moveTo(x,0);X.lineTo(x,H);X.stroke()}for(let y=0;y<H;y+=50){X.beginPath();X.moveTo(0,y);X.lineTo(W,y);X.stroke()}X.globalAlpha=1}
+
+// orbs
+const orbs=Array.from({length:5},()=>({x:Math.random(),y:Math.random(),r:100+Math.random()*280,c:[LIME,'#a78bfa','#60a5fa'][~~(Math.random()*3)],s:.0002+Math.random()*.0003,p:Math.random()*6.28}));
+function drawOrbs(t){orbs.forEach(o=>glow(o.x*W+Math.sin(t*o.s*1e3+o.p)*100,o.y*H+Math.cos(t*o.s*800+o.p)*80,o.r,o.c))}
+
+// phone mockup
+function drawPhone(x,y,sc,al,content){
+  X.save();X.globalAlpha=al;X.translate(x,y);X.scale(sc,sc);
+  const pw=180,ph=360,r=24;
+  // shadow
+  glow(0,20,200,'#000000');
+  // body
+  rr(-pw/2,-ph/2,pw,ph,r,'#111316','#2a2d34',1.5);
+  // notch
+  rr(-30,-ph/2+4,60,14,7,'#0a0c10');
+  // screen
+  rr(-pw/2+8,-ph/2+24,pw-16,ph-36,16,'#0a0c10');
+  if(content)content();
+  X.restore();
+}
+
+const DUR=28000;
+let t0=null,gT=0;
+function gt(s,d){return Math.max(0,Math.min(1,(gT-s)/d))}
+
+function render(ts){
+  if(!t0)t0=ts;gT=ts-t0;
+  bar.style.width=(Math.min(1,gT/DUR)*100)+'%';
+  X.clearRect(0,0,W,H);X.fillStyle=BG;X.fillRect(0,0,W,H);
+  drawOrbs(gT);grid();
+  parts=parts.filter(p=>p.l>0);parts.forEach(p=>{p.update();p.draw()});
+  const s=Math.min(W,H)/900;
+
+  // ═══ 1: HOOK — You love your team. (0–4s) ═══
+  if(gT<4500){
+    const t=gt(0,3500),fo=gT>3500?1-(gT-3500)/1000:1;
+    // team crests orbiting
+    if(t>.05){
+      const orbitR=160*s;
+      TEAMS.forEach((tm,i)=>{
+        const ang=(i/TEAMS.length)*Math.PI*2+gT*.0008;
+        const tx=cx+Math.cos(ang)*orbitR;
+        const ty=cy+Math.sin(ang)*orbitR*.4+10*s;
+        const ta=eo(Math.min(1,(t-.05)/.4))*fo;
+        X.globalAlpha=ta*.7;
+        X.fillStyle=tm.color;
+        X.beginPath();X.arc(tx,ty,18*s,0,Math.PI*2);X.fill();
+        X.globalAlpha=1;
+        txt(tm.short,tx,ty,{sz:Math.round(8*s),c:'#000',a:ta*.9,w:'700',m:true});
+      });
+    }
+    // center text
+    const t1=eo(Math.min(1,t*3));
+    txt('You love your team.',cx,cy-20*s,{sz:Math.round(48*s),a:t1*fo});
+    if(t>.3){
+      const t2=eo((t-.3)/.4);
+      txt('Why can\'t you trade it?',cx,cy+35*s,{sz:Math.round(36*s),c:LIME,a:t2*fo});
+    }
+  }
+
+  // ═══ 2: THE FRUSTRATION — Bet dies (4–9s) ═══
+  if(gT>3500&&gT<9500){
+    const t=gt(4000,5000),fi=eo(Math.min(1,t*4)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    // Phone with bet
+    if(t<.55){
+      const phoneA=el(Math.min(1,t/.2));
+      drawPhone(cx,cy,s*1.1,phoneA*a,()=>{
+        // bet slip inside phone
+        rr(-70,-120,140,100,8,'#161922','#2a2d34');
+        txt('Your Bet',0,-100,{sz:10,c:DIM,w:'500',m:true});
+        txt('Arsenal to win',0,-75,{sz:13,c:WH,w:'600'});
+        txt('vs Chelsea · Sat 15:00',0,-55,{sz:9,c:DIM,w:'400'});
+        // odds
+        rr(-50,-40,100,28,6,LIME+'15',LIME+'40');
+        txt('2.10',0,-26,{sz:14,c:LIME,w:'700',m:true});
+        // stake
+        txt('$50 → win $105',0,0,{sz:11,c:'#999',w:'500'});
+
+        // countdown
+        if(t>.15){
+          const cd=(t-.15)/.35;
+          const mins=Math.round(90-Math.min(1,cd)*90);
+          txt(mins+"'",0,40,{sz:28,c:RED,w:'700',m:true,a:Math.min(1,cd*3)});
+          // progress ring
+          X.globalAlpha=Math.min(1,cd*3);
+          X.strokeStyle=RED;X.lineWidth=2;
+          X.beginPath();X.arc(0,40,22,-Math.PI/2,-Math.PI/2+(1-Math.min(1,cd))*Math.PI*2);X.stroke();
+          X.globalAlpha=1;
+          if(mins<20&&Math.random()<.2)rain(-160,RED+'80',3);
+        }
+      });
+    }
+    // FULL TIME — everything shatters
+    else if(t<.75){
+      const sh=(t-.55)/.2;
+      if(sh<.03)burst(cx,cy,RED,90);
+
+      // phone cracks and flies apart
+      for(let i=0;i<6;i++){
+        const ang=(i/6)*Math.PI*2+sh*1.5;
+        const dist=sh*400*s;
+        const fa=(1-sh)*fo;
+        X.save();X.globalAlpha=fa;
+        X.translate(cx+Math.cos(ang)*dist,cy+Math.sin(ang)*dist);
+        X.rotate(ang+sh*5);
+        rr(-20*s,-30*s,40*s,60*s,6,'#161922',RED+'60');
+        X.restore();
+      }
+
+      // FULL TIME stamp
+      const stmp=eb(Math.min(1,sh*2.5));
+      X.save();X.translate(cx,cy);X.rotate(-.1);X.scale(stmp,stmp);
+      rr(-140*s,-30*s,280*s,60*s,8,RED+'20',RED,2.5);
+      txt('FULL TIME',0,0,{sz:Math.round(44*s),c:RED});
+      X.restore();
+    }
+    // aftermath — money gone
+    else{
+      const af=(t-.75)/.25,afa=eo(af)*fo;
+      // falling dollar signs
+      if(af<.5&&Math.random()<.3){
+        parts.push(new P(cx+(Math.random()-.5)*200*s,cy-100*s,'#ff4d4d50',(Math.random()-.5)*2,1+Math.random()*2,40,3));
+      }
+      txt('💸',cx,cy-30*s,{sz:Math.round(50*s),a:afa});
+      txt('Bet expired. Money gone.',cx,cy+30*s,{sz:Math.round(22*s),c:RED,a:afa});
+      txt('See you next weekend.',cx,cy+60*s,{sz:Math.round(14*s),c:DIM,a:afa*.7,w:'400'});
+    }
+  }
+
+  // ═══ 3: THE SHIFT — "What if..." (9–11s) ═══
+  if(gT>9000&&gT<11500){
+    const t=gt(9500,1800),fo=gT>11000?1-(gT-11000)/500:1;
+    const ta=el(Math.min(1,t/.4))*fo;
+    txt('What if your position',cx,cy-30*s,{sz:Math.round(40*s),c:'#888',a:ta});
+    if(t>.2){
+      const t2=el(Math.min(1,(t-.2)/.4));
+      txt('never expired?',cx,cy+25*s,{sz:Math.round(48*s),c:LIME,a:t2*fo});
+      if(t>.21&&t<.25)burst(cx,cy+25*s,LIME,50);
+    }
+  }
+
+  // ═══ 4: NOTCH EXPERIENCE — Phone with live trading (11–19s) ═══
+  if(gT>11000&&gT<19500){
+    const t=gt(11500,7500),fi=eo(Math.min(1,t*3)),fo=t>.9?1-(t-.9)/.1:1,a=fi*fo;
+
+    // "This is Notch" header
+    if(t<.15){
+      const ha=el(t/.15)*fo;
+      txt('This is',cx,cy-10*s,{sz:Math.round(32*s),c:DIM,a:ha,w:'500'});
+      txt('Notch',cx,cy+35*s,{sz:Math.round(56*s),c:LIME,a:ha});
+    }
+
+    // Phone appears
+    if(t>.1){
+      const phoneT=Math.min(1,(t-.1)/.15);
+      const phoneA=el(phoneT)*a;
+      const phoneScale=s*1.15;
+
+      // Price journey
+      const journey=[
+        {at:.12,price:340,pnl:0},{at:.2,price:348,pnl:2.4},{at:.3,price:358,pnl:5.3},
+        {at:.38,price:351,pnl:3.2},{at:.5,price:372,pnl:9.4},{at:.6,price:389,pnl:14.4},
+        {at:.7,price:395,pnl:16.2},{at:.8,price:412,pnl:21.2}
+      ];
+      let cur=journey[0];for(const j of journey)if(t>=j.at)cur=j;
+
+      drawPhone(cx,cy-10*s,phoneScale,phoneA,()=>{
+        // app header
+        txt('NOTCH',0,-148,{sz:9,c:LIME,w:'700',m:true});
+        // team card
+        rr(-72,-130,144,70,10,'#161922',LIME+'20');
+        X.fillStyle=TEAMS[0].color;X.beginPath();X.arc(-45,-95,14,0,Math.PI*2);X.fill();
+        txt('ARS',-45,-95,{sz:7,c:'#000',w:'700',m:true});
+        txt('Arsenal',10,-105,{sz:14,c:WH,w:'600',al:'left'});
+        txt('Long · 5x',10,-88,{sz:9,c:LIME,w:'500',m:true,al:'left'});
+
+        // price + pnl
+        txt('$'+cur.price,0,-45,{sz:28,c:WH,w:'700'});
+        const pnlColor=cur.pnl>=0?LIME:RED;
+        const pnlSign=cur.pnl>=0?'+':'';
+        txt(pnlSign+cur.pnl.toFixed(1)+'%',0,-18,{sz:16,c:pnlColor,w:'700',m:true});
+
+        // mini chart
+        const chartProg=Math.min(1,(t-.12)/.65);
+        const pts=[0,.02,.05,.04,.08,.12,.10,.14,.18,.16,.20,.24,.28,.25,.30,.35,.32,.38,.42,.40,.45,.50,.55,.52,.58,.62,.68,.65,.70,.75,.72,.78,.82,.85,.88,.92];
+        X.beginPath();
+        const n=Math.floor(chartProg*pts.length);
+        for(let i=0;i<=n;i++){
+          const px=-68+(i/pts.length)*136;
+          const py=70-pts[i]*100;
+          if(i===0)X.moveTo(px,py);else X.lineTo(px,py);
+        }
+        X.strokeStyle=LIME;X.lineWidth=1.5;X.stroke();
+        // fill under
+        if(n>0){
+          X.lineTo(-68+(n/pts.length)*136,70);X.lineTo(-68,70);X.closePath();
+          X.fillStyle=LIME+'08';X.fill();
+          // dot
+          const dx=-68+(n/pts.length)*136,dy=70-pts[n]*100;
+          X.fillStyle=LIME;X.beginPath();X.arc(dx,dy,3,0,Math.PI*2);X.fill();
+        }
+
+        // bottom buttons
+        rr(-72,90,66,28,6,LIME);
+        txt('Long',- 39,104,{sz:11,c:'#000',w:'700'});
+        rr(6,90,66,28,6,'transparent',RED+'80');
+        txt('Short',39,104,{sz:11,c:RED,w:'600'});
+
+        // no expiry badge
+        rr(-40,130,80,18,9,LIME+'15',LIME+'30');
+        txt('No expiry ∞',0,139,{sz:8,c:LIME,w:'500',m:true});
+      });
+
+      // Events appearing on sides
+      const events=[
+        {at:.22,text:'⚽ Arsenal wins 2-1',side:-1,y:-60},
+        {at:.35,text:'📈 Price jumps +5%',side:1,y:-30},
+        {at:.42,text:'🏥 Saka out 2 weeks',side:-1,y:0},
+        {at:.52,text:'🔥 Win streak!',side:1,y:30},
+        {at:.65,text:'💰 Still holding...',side:-1,y:60},
+        {at:.78,text:'🚀 +21% and counting',side:1,y:90},
+      ];
+      events.forEach(ev=>{
+        if(t>ev.at&&t<ev.at+.1){
+          const et=(t-ev.at)/.1;
+          const ea=et<.2?et/.2:et>.7?(1-et)/.3:1;
+          const ex=cx+ev.side*(160*s);
+          const slideX=ev.side*30*s*(1-eo(Math.min(1,et*3)));
+          txt(ev.text,ex+slideX,cy+ev.y*s-10*s,{sz:Math.round(13*s),c:LIME,a:ea*a,w:'500',al:ev.side<0?'right':'left'});
+          if(et<.04)parts.push(new P(ex,cy+ev.y*s,LIME,ev.side*2,-1,20,2));
+        }
+      });
+
+      // Pulse when price changes
+      const priceChanges=[.2,.3,.38,.5,.6,.7,.8];
+      priceChanges.forEach(pc=>{
+        if(t>pc&&t<pc+.03)burst(cx,cy-55*s,LIME,15);
+      });
+    }
+  }
+
+  // ═══ 5: SIDE-BY-SIDE KILLER COMPARISON (19–23.5s) ═══
+  if(gT>18500&&gT<24000){
+    const t=gt(19000,4500),fi=eo(Math.min(1,t*4)),fo=t>.88?1-(t-.88)/.12:1,a=fi*fo;
+
+    const colW=200*s,gap=60*s;
+    const lx=cx-gap/2-colW,rx=cx+gap/2;
+    const topY=cy-170*s;
+
+    // Headers
+    txt('Old betting',lx+colW/2,topY,{sz:Math.round(20*s),c:RED,a,w:'600'});
+    txt('Notch',rx+colW/2,topY,{sz:Math.round(20*s),c:LIME,a,w:'600'});
+
+    // VS divider
+    X.globalAlpha=a*.3;X.fillStyle=BORD;X.fillRect(cx-1,topY+20*s,2,300*s);X.globalAlpha=1;
+
+    const rows=[
+      {label:'Duration',old:'90 minutes',nw:'Forever'},
+      {label:'Your bet',old:'Dies at full time',nw:'Lives & grows'},
+      {label:'Expression',old:'Win / Lose',nw:'Long / Short / Partial'},
+      {label:'Can you sell early?',old:'Nope',nw:'Anytime'},
+      {label:'House edge',old:'~7% vig',nw:'0%'},
+      {label:'Off-season',old:'Nothing to do',nw:'Transfers move price'},
+    ];
+
+    rows.forEach((r,i)=>{
+      const rowDelay=.08+i*.07;
+      if(t>rowDelay){
+        const rt=el(Math.min(1,(t-rowDelay)/.15));
+        const ry=topY+40*s+i*48*s;
+        const ra=rt*a;
+
+        // label
+        txt(r.label,cx,ry-8*s,{sz:Math.round(9*s),c:DIM,a:ra*.7,w:'500',m:true});
+
+        // old side
+        X.globalAlpha=ra;
+        rr(lx,ry,colW,30*s,6,'#12141a',RED+'15');
+        X.globalAlpha=1;
+        txt(r.old,lx+colW/2,ry+15*s,{sz:Math.round(13*s),c:'#888',a:ra,w:'500'});
+        // X mark
+        txt('✗',lx+colW-14*s,ry+15*s,{sz:Math.round(12*s),c:RED,a:ra*.6});
+
+        // new side
+        X.globalAlpha=ra;
+        rr(rx,ry,colW,30*s,6,'#0f1512',LIME+'20');
+        X.globalAlpha=1;
+        txt(r.nw,rx+colW/2,ry+15*s,{sz:Math.round(13*s),c:LIME,a:ra,w:'600'});
+        // check
+        txt('✓',rx+colW-14*s,ry+15*s,{sz:Math.round(12*s),c:LIME,a:ra});
+      }
+    });
+  }
+
+  // ═══ 6: FINALE (23.5–28s) ═══
+  if(gT>23000){
+    const t=gt(23500,4500);
+
+    if(t>.0){
+      const t1=el(Math.min(1,t/.25));
+      txt('Your loyalty lasts',cx,cy-70*s,{sz:Math.round(36*s),c:'#999',a:t1,w:'500'});
+    }
+    if(t>.08){
+      const t2=el(Math.min(1,(t-.08)/.25));
+      txt('a lifetime.',cx,cy-25*s,{sz:Math.round(52*s),c:WH,a:t2});
+    }
+    if(t>.18){
+      const t3=el(Math.min(1,(t-.18)/.25));
+      txt('Now your position can too.',cx,cy+30*s,{sz:Math.round(36*s),c:LIME,a:t3});
+      if(t>.19&&t<.22)confetti(cx,cy+30*s,80);
+    }
+
+    // CTA
+    if(t>.45){
+      const ct=eo((t-.45)/.15);
+      const ctaY=cy+110*s;
+      glow(cx,ctaY,100,LIME);
+      X.globalAlpha=ct;
+      rr(cx-100*s,ctaY-24*s,200*s,48*s,99,LIME);
+      X.globalAlpha=1;
+      txt('Join the waitlist',cx,ctaY,{sz:Math.round(16*s),c:'#000',a:ct,w:'700'});
+      // sparkles
+      if(Math.random()<.2)parts.push(new P(cx+(Math.random()-.5)*220*s,ctaY,LIME,(Math.random()-.5)*1,-Math.random()*2,20,1.5));
+    }
+
+    if(t>.55){
+      const na=eo((t-.55)/.1);
+      txt('notch.win',cx,cy+155*s,{sz:Math.round(13*s),c:LIME,a:na*.5,w:'500',m:true});
+    }
+
+    if(t>=1)btn.classList.add('on');
+  }
+
+  if(gT<DUR+3000)requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
