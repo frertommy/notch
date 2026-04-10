@@ -57,16 +57,13 @@
     grid-template-columns:1fr 1fr !important;
   }
   
-  /* Oracle calendar grid - stack on mobile */
-  [style*="grid-template-columns:180px repeat(12"]{
-    grid-template-columns:1fr !important;
-    gap:8px !important;
+  /* Oracle calendar grid - horizontal scroll on mobile */
+  .oracle-scroll{
+    overflow-x:auto !important;
+    -webkit-overflow-scrolling:touch;
   }
-  [style*="grid-template-columns:180px repeat(12"] > div{
-    display:none;
-  }
-  [style*="grid-template-columns:180px repeat(12"] > div:first-child{
-    display:block;
+  .oracle-scroll > div{
+    min-width:700px;
   }
   
   /* Two-column layouts go single */
@@ -694,81 +691,6 @@
 </div></div>
 
 
-<!-- 13 LEGAL WEDGE -->
-<div class="sec"><div class="sec-inner">
-  <div class="lbl reveal" style="color:var(--t2)">16 · Legal Wedge</div>
-  <div class="h2 reveal d1" style="margin-top:20px;max-width:700px">$4.5B in capital can't legally operate in all 50 states. <span style="color:var(--lime)">We can. By design.</span></div>
-
-  <p class="body reveal d2" style="margin-top:12px;max-width:600px">Notch is a derivative, not an event contract. That means one federal license, 50-state access, and the entire market from day one — while they litigate state by state for years.</p>
-
-  <!-- Two columns -->
-  <div style="display:grid;grid-template-columns:3fr 5fr;gap:1px;background:var(--border);margin-top:32px">
-
-    <!-- LEFT: Event Contracts -->
-    <div class="card reveal d3" style="padding:28px;border-left:2px solid var(--red);background:var(--bg)">
-      <div class="lbl" style="color:var(--red);margin-bottom:20px">Kalshi / Polymarket Architecture</div>
-
-      <div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--t2);line-height:1.6">The structural flaw: "Will Arsenal win? Yes=$1 / No=$0" is a <span style="color:var(--red);font-weight:600">binary bet on a game outcome</span>. States classify it as gambling.</div>
-
-      <div style="display:flex;flex-direction:column;gap:0">
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <span class="mono" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;background:rgba(239,107,107,.2);color:var(--red);white-space:nowrap">CRIMINAL</span>
-          <span style="font-size:12px;color:var(--t1);flex:1"><span style="color:var(--w);font-weight:600">Arizona</span> — 20 felony counts, unlicensed gambling</span>
-          <span class="mono" style="font-size:10px;color:var(--t3)">Mar 17</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <span class="mono" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;background:rgba(239,107,107,.12);color:var(--red);white-space:nowrap">HALTED</span>
-          <span style="font-size:12px;color:var(--t1);flex:1"><span style="color:var(--w);font-weight:600">Nevada</span> — TRO, all operations shut down</span>
-          <span class="mono" style="font-size:10px;color:var(--t3)">Mar 20</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <span class="mono" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;background:rgba(245,197,66,.12);color:var(--amber);white-space:nowrap">BANNED</span>
-          <span style="font-size:12px;color:var(--t1);flex:1"><span style="color:var(--w);font-weight:600">Massachusetts</span> — injunction, no sports contracts</span>
-          <span class="mono" style="font-size:10px;color:var(--t3)">Jan 20</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0">
-          <span class="mono" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:2px;background:rgba(96,98,103,.15);color:var(--t3);white-space:nowrap">C&D</span>
-          <span style="font-size:12px;color:var(--t1);flex:1"><span style="color:var(--w);font-weight:600">OH, IL, MD, UT</span> + 7 more states</span>
-          <span class="mono" style="font-size:10px;color:var(--t3)">2025–26</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: Perpetual Derivative -->
-    <div class="card reveal d4" style="padding:28px;border-left:2px solid var(--lime)">
-      <div class="lbl" style="color:var(--lime);margin-bottom:20px">Perpetual Derivative — Our Architecture</div>
-
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--w)">Index derivative, not an event bet</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:4px">Position tracks a continuous price index across 50+ matches. No binary payout. Does not meet CEA "gaming" definition.</div>
-        </div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--w)">Perps already live on US exchanges</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:4px">CFTC greenlit crypto perpetuals on Coinbase Derivatives, July 2025. Same instrument structure — different underlying.</div>
-        </div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--w)">Regulators are actively onshoring perps</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:4px">SEC + CFTC "Project Crypto" summit, Jan 2026 — innovation exemptions for perpetual derivatives.</div>
-        </div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--w)">Clean swap classification</div>
-          <div style="font-size:12px;color:var(--t2);margin-top:4px">Standard derivatives mechanics that courts and regulators already recognize. No novel legal theory required.</div>
-        </div>
-      </div>
-
-      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
-        <span class="mono" style="font-size:10px;padding:3px 8px;border-radius:2px;background:rgba(178,237,104,.08);color:var(--lime);border:1px solid rgba(178,237,104,.1)">CFTC PERP FRAMEWORK ✓</span>
-        <span class="mono" style="font-size:10px;padding:3px 8px;border-radius:2px;background:rgba(178,237,104,.08);color:var(--lime);border:1px solid rgba(178,237,104,.1)">INDEX DERIVATIVE ✓</span>
-        <span class="mono" style="font-size:10px;padding:3px 8px;border-radius:2px;background:rgba(178,237,104,.08);color:var(--lime);border:1px solid rgba(178,237,104,.1)">NO BINARY EVENT ✓</span>
-        <span class="mono" style="font-size:10px;padding:3px 8px;border-radius:2px;background:rgba(178,237,104,.08);color:var(--lime);border:1px solid rgba(178,237,104,.1)">50-STATE LEGAL ✓</span>
-      </div>
-    </div>
-
-  </div>
-
-</div></div>
-
 <!-- APPENDIX DIVIDER -->
 <div class="sec"><div class="sec-inner" style="min-height:calc(100vh - 57px);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
   <div class="reveal"><span class="mono upper" style="font-weight:700;font-size:clamp(48px,8vw,80px);color:var(--w);letter-spacing:.15em">APPENDIX</span></div>
@@ -990,7 +912,7 @@
   <p class="body reveal d2" style="margin-top:12px;max-width:600px">Colored blocks = peak match density. Dotted = offseason, markets still open.</p>
 
   <!-- Calendar grid -->
-  <div class="reveal d2">
+  <div class="reveal d2 oracle-scroll">
     <div>
 
       <!-- Month headers -->
@@ -1203,6 +1125,41 @@
   </div>
 
   <div class="callout reveal d4"><span>The instrument is proven. The audience is trained. And the competition is getting sued.</span></div>
+</div></div>
+
+<!-- A7 LEGAL WEDGE -->
+<div class="sec"><div class="sec-inner">
+  <div class="lbl reveal" style="color:var(--t2)">A7 · Legal Wedge</div>
+  <div class="h2 reveal d1" style="margin-top:20px;max-width:800px">A perpetual derivative. <span style="color:var(--lime)">Not an event contract.</span></div>
+
+  <p class="body reveal d2" style="margin-top:12px;max-width:700px">No settlement, no expiry, no single-game payoff. Notch is a continuous index derivative — designed for the federal derivative framework from day one.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-top:32px">
+    <div class="card reveal d3" style="padding:28px;background:var(--bg)">
+      <div style="display:flex;flex-direction:column;gap:24px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--w)">No settlement. No expiry. No game to bet on.</div>
+          <div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6">Positions stay open across matches, transfers, managerial changes, and entire off-seasons. There is no cash-out event tied to a game result. Price moves continuously — like an equity, not a bet.</div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--w)">Continuous index, not an event contract</div>
+          <div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6">Team strength index synthesizes bookmaker odds, match history, transfers, injuries, and network effects into a forward-looking estimate. No single match determines the price — the same way no single earnings report determines the S&P.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card reveal d4" style="padding:28px;background:var(--bg)">
+      <div style="display:flex;flex-direction:column;gap:24px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--w)">Perp infrastructure already CFTC-approved</div>
+          <div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6">CFTC greenlit crypto perpetuals on Coinbase Derivatives, July 2025. SEC + CFTC "Project Crypto" summit, Jan 2026 — onshoring perpetual derivatives is an explicit regulatory priority.</div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--w)">Designed for the federal derivative framework</div>
+          <div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6">Standard derivatives mechanics — margin, funding rate, liquidation — that courts and regulators already recognize. Three-entity structure isolates pricing, clearing, and distribution.</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div></div>
 
 <!-- TRADE NOW -->
