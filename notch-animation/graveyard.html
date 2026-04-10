@@ -65,7 +65,7 @@ function initTombstones() {
     riseProgress: 0,
     crumbleProgress: 0,
     x: 0, y: 0, w: 0, h: 0,
-    delay: i * 0.35,
+    delay: i * 0.28,
   }));
 }
 
@@ -73,14 +73,14 @@ function initTombstones() {
 let fogParticles = [];
 function initFog() {
   fogParticles = [];
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 50; i++) {
     fogParticles.push({
       x: Math.random() * 2000,
-      y: Math.random() * 2000,
-      size: 20 + Math.random() * 60,
-      speed: 5 + Math.random() * 15,
-      alpha: 0.02 + Math.random() * 0.06,
-      drift: (Math.random() - 0.5) * 3,
+      y: 800 + Math.random() * 1200,
+      size: 30 + Math.random() * 80,
+      speed: 3 + Math.random() * 8,
+      alpha: 0.008 + Math.random() * 0.02,
+      drift: (Math.random() - 0.5) * 2,
     });
   }
 }

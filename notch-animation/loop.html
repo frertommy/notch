@@ -111,8 +111,8 @@ class MoneyParticle {
     this.x = x; this.y = y;
     this.vx = (Math.random() - 0.5) * 200;
     this.vy = -Math.random() * 150 - 50;
-    this.life = 1.5;
-    this.maxLife = 1.5;
+    this.life = 1.0;
+    this.maxLife = 1.0;
     this.rot = Math.random() * Math.PI * 2;
     this.rotV = (Math.random() - 0.5) * 8;
   }
@@ -700,14 +700,16 @@ function animate(ts) {
   const prog = Math.min(1, animTime / DURATION);
   progressBar.style.width = (prog * 100) + '%';
 
-  // Determine phase
+  // Determine phase — clear stale particles at transitions
   if (animTime < 4) {
     drawPhase1(animTime);
   } else if (animTime < 8) {
+    if (moneyParticles.length > 0 && animTime > 4.5) moneyParticles.length = 0;
     drawPhase2(animTime - 4);
   } else if (animTime < 12) {
     drawPhase3(animTime - 8);
   } else if (animTime < 16) {
+    if (shatterPieces.length > 0 && animTime > 12.5) shatterPieces.length = 0;
     drawPhase4(animTime - 12);
   } else if (animTime < DURATION) {
     drawPhase5(animTime - 16);

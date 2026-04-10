@@ -443,16 +443,6 @@ function drawScene3(t) {
   if (lt > 2.5) {
     const txtA = fadeIn(lt, 2.5, 0.5);
     ctx.globalAlpha = txtA;
-    drawText('On Notch, you could have sold at', cx, cy + 110 * S, 18, WHITE);
-    drawBoldText('+15%', cx + 170 * S, cy + 110 * S, 18, LIME, 'center', 'JetBrains Mono');
-    drawText("during minute 60.", cx + 50 * S, cy + 110 * S, 18, WHITE);
-    // Redo as single line
-    ctx.globalAlpha = 0; // clear above
-  }
-
-  if (lt > 2.5) {
-    const txtA = fadeIn(lt, 2.5, 0.5);
-    ctx.globalAlpha = txtA;
     const line = "On Notch, you could have sold at +15% during minute 60.";
     ctx.font = `${Math.round(17 * S)}px 'Space Grotesk', sans-serif`;
     ctx.textAlign = 'center';
