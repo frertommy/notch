@@ -376,6 +376,97 @@
   .state-hint .lbl-expanded { display: none; }
   .card.is-expanded .state-hint .lbl-expanded { display: inline; }
 
+  /* settings button + dropdown */
+  .head-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .settings-wrap {
+    position: relative;
+  }
+  .settings-btn {
+    background: transparent;
+    border: 1px solid #242629;
+    color: #888780;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+  .settings-btn:hover,
+  .settings-btn.is-open {
+    border-color: #b2ed68;
+    color: #b2ed68;
+  }
+  .settings-btn svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+  }
+  .settings-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 220px;
+    background: #14171c;
+    border: 1px solid #242629;
+    border-radius: 10px;
+    padding: 10px 0 6px;
+    display: none;
+    z-index: 20;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+  .settings-menu.is-open {
+    display: block;
+  }
+  .menu-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: #5F5E5A;
+    padding: 4px 18px 12px;
+    letter-spacing: 0.5px;
+  }
+  .menu-item {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #fff;
+    padding: 9px 18px;
+    text-align: left;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.1s ease;
+  }
+  .menu-item:hover {
+    background: #1c2027;
+  }
+  .menu-item .active-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #b2ed68;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  .menu-item.is-active .active-dot {
+    opacity: 1;
+  }
+
+  /* hide absolute $ delta in non-dollar modes */
+  .card:not([data-fmt="dollar"]) .delta {
+    display: none;
+  }
+
 </style>
 </head>
 <body>
@@ -402,7 +493,35 @@
   <div class="card" id="card">
     <div class="card-head">
       <div class="league-pill">NBA · R2 G2</div>
-      <div class="timestamp">2026-05-08 · tip 9:00pm ET</div>
+      <div class="head-right">
+        <div class="timestamp">2026-05-08 · tip 9:00pm ET</div>
+        <div class="settings-wrap">
+          <button class="settings-btn" id="settingsBtn" aria-label="Odds format">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="6" x2="11" y2="6"/>
+              <line x1="15" y1="6" x2="20" y2="6"/>
+              <circle cx="13" cy="6" r="2"/>
+              <line x1="4" y1="12" x2="6" y2="12"/>
+              <line x1="10" y1="12" x2="20" y2="12"/>
+              <circle cx="8" cy="12" r="2"/>
+              <line x1="4" y1="18" x2="13" y2="18"/>
+              <line x1="17" y1="18" x2="20" y2="18"/>
+              <circle cx="15" cy="18" r="2"/>
+            </svg>
+          </button>
+          <div class="settings-menu" id="settingsMenu">
+            <div class="menu-label">Odds Format</div>
+            <button class="menu-item is-active" data-fmt="dollar">Price <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="american">American <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="decimal">Decimal <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="fractional">Fractional <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="percentage">Percentage <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="indonesian">Indonesian <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="hongkong">Hong Kong <span class="active-dot"></span></button>
+            <button class="menu-item" data-fmt="malaysian">Malaysian <span class="active-dot"></span></button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="matchup">
@@ -502,12 +621,12 @@
         <div class="foot-cell foot-cell-l">
           <div class="foot-team win">OKC</div>
           <div class="foot-line">−7.5</div>
-          <div class="foot-ml">ML −310</div>
+          <div class="foot-ml">ML <span class="ml-val">−310</span></div>
         </div>
         <div class="foot-cell foot-cell-r">
           <div class="foot-team loss">LAL</div>
           <div class="foot-line">+7.5</div>
-          <div class="foot-ml">ML +245</div>
+          <div class="foot-ml">ML <span class="ml-val">+245</span></div>
         </div>
       </div>
 
@@ -533,9 +652,92 @@
 
 <script>
   const card = document.getElementById('card');
-  const btn = document.getElementById('expandBtn');
-  btn.addEventListener('click', () => {
+  const expandBtn = document.getElementById('expandBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsMenu = document.getElementById('settingsMenu');
+
+  expandBtn.addEventListener('click', () => {
     card.classList.toggle('is-expanded');
+  });
+
+  // Per-row implied probabilities — likelihood of each margin bucket
+  const rowProbs = [0.21, 0.18, 0.18, 0.14, 0.14, 0.09, 0.06];
+  document.querySelectorAll('.bucket-row').forEach((row, i) => {
+    const p = rowProbs[i];
+    row.querySelectorAll('.price-num').forEach(el => { el.dataset.prob = p; });
+  });
+  // Foot ML implied probs (back-derived from American odds in original card)
+  document.querySelector('.foot-cell-l .ml-val').dataset.prob = 0.756;
+  document.querySelector('.foot-cell-r .ml-val').dataset.prob = 0.290;
+
+  const targets = () => document.querySelectorAll('.price-num, .ml-val');
+  targets().forEach(el => { el.dataset.priceOrig = el.textContent; });
+
+  const formatters = {
+    dollar: (p, orig) => orig,
+    american: (p) => {
+      if (p >= 0.999) return '−∞';
+      if (p <= 0.001) return '+∞';
+      if (Math.abs(p - 0.5) < 0.0001) return '+100';
+      const v = p > 0.5 ? -100 * p / (1 - p) : 100 * (1 - p) / p;
+      return (v > 0 ? '+' : '−') + Math.round(Math.abs(v));
+    },
+    decimal: (p) => (1 / p).toFixed(2),
+    fractional: (p) => {
+      const dec = 1 / p - 1;
+      let best = { n: 1, d: 1, err: Infinity };
+      for (let d = 1; d <= 20; d++) {
+        const n = Math.max(1, Math.round(dec * d));
+        const err = Math.abs(dec - n / d);
+        if (err < best.err) best = { n, d, err };
+      }
+      return best.n + '/' + best.d;
+    },
+    percentage: (p) => Math.round(p * 100) + '%',
+    indonesian: (p) => {
+      if (Math.abs(p - 0.5) < 0.0001) return '+1.00';
+      const v = p > 0.5 ? -p / (1 - p) : (1 - p) / p;
+      return (v > 0 ? '+' : '−') + Math.abs(v).toFixed(2);
+    },
+    hongkong: (p) => (1 / p - 1).toFixed(2),
+    malaysian: (p) => {
+      const hk = 1 / p - 1;
+      const v = hk > 1 ? -1 / hk : hk;
+      return (v >= 0 ? '+' : '') + v.toFixed(2);
+    }
+  };
+
+  function applyFormat(fmt) {
+    card.dataset.fmt = fmt;
+    targets().forEach(el => {
+      const prob = parseFloat(el.dataset.prob);
+      if (isNaN(prob)) return;
+      el.textContent = formatters[fmt](prob, el.dataset.priceOrig);
+    });
+    document.querySelectorAll('.menu-item').forEach(item => {
+      item.classList.toggle('is-active', item.dataset.fmt === fmt);
+    });
+  }
+
+  card.dataset.fmt = 'dollar';
+
+  settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = settingsMenu.classList.toggle('is-open');
+    settingsBtn.classList.toggle('is-open', open);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.settings-wrap')) {
+      settingsMenu.classList.remove('is-open');
+      settingsBtn.classList.remove('is-open');
+    }
+  });
+  document.querySelectorAll('.menu-item').forEach(item => {
+    item.addEventListener('click', () => {
+      applyFormat(item.dataset.fmt);
+      settingsMenu.classList.remove('is-open');
+      settingsBtn.classList.remove('is-open');
+    });
   });
 </script>
 </body>
