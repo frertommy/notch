@@ -931,13 +931,15 @@ function makeChart(canvasId, oddsData, priceData, cfg) {
             // cfg.goals = [{min, label, color}, ...] — color: 'home' (red) or 'away' (green) for the subject team
             // In cleanMode, labels are hidden — only colored vertical lines are drawn.
             ...(Array.isArray(cfg.goals) ? Object.fromEntries(cfg.goals.map((g, i) => {
-              // Subject team's goals are GREEN (matches subject's win% line color),
-              // opponent's goals are RED. g.color stores match-side ('home'/'away').
+              // Goal colors use blue/purple to avoid clashing with the green/red W/L odds lines.
+              // Subject team = blue, opponent = purple. g.color stores match-side ('home'/'away').
               const subjectIsHome = cfg.subjectIdx === 1;
               const isSubjectGoal = (g.color === 'home') === subjectIsHome;
-              const lineColor = isSubjectGoal ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,113,0.7)';
-              const lblColor  = isSubjectGoal ? '#4ade80' : '#f87171';
-              const lblBg     = isSubjectGoal ? 'rgba(74,222,128,0.20)' : 'rgba(248,113,113,0.20)';
+              const lineColor = isSubjectGoal ? 'rgba(91,141,239,0.75)' : 'rgba(167,139,250,0.75)';
+              const lblColor  = isSubjectGoal ? '#5b8def' : '#a78bfa';
+              const lblBg     = isSubjectGoal ? 'rgba(91,141,239,0.20)' : 'rgba(167,139,250,0.20)';
+              const teamLetter = (isSubjectGoal ? cfg.subjectName : cfg.opponentName)[0].toUpperCase();
+              const scoreText  = (g.label || '').replace(/-/g, ':');
 
               let label;
               if (goalLabels === 'none') {
@@ -945,8 +947,9 @@ function makeChart(canvasId, oddsData, priceData, cfg) {
               } else if (goalLabels === 'score-top') {
                 const yAdj = (i % 3) * 30;
                 label = {
-                  display: true, content: g.label, position: 'end',
+                  display: true, content: `${teamLetter} ${scoreText}`, position: 'end',
                   backgroundColor: lblBg, color: lblColor,
+                  borderColor: lineColor, borderWidth: 1,
                   font: { size: fs.goalLabel, weight: 'bold' },
                   yAdjust: yAdj,
                   padding: 5,
