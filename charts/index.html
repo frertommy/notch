@@ -186,6 +186,28 @@
   .tab-panel.investor .legend-card h2{font-size:11px;margin-bottom:14px}
   .tab-panel.investor .leg-row{font-size:13px;margin-bottom:8px}
   .tab-panel.investor .ev{font-size:12px;padding:8px 0}
+  /* Variant sub-tabs (inside investor panel) */
+  .variant-tabs{
+    display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;
+  }
+  .vtab{
+    padding:9px 16px;
+    background:var(--bg-card);
+    border:1px solid var(--border-soft);
+    color:var(--t2);
+    font-family:'Space Mono',monospace;font-size:11px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    cursor:pointer;transition:all .12s;
+  }
+  .vtab:hover{color:var(--t1);border-color:var(--border)}
+  .vtab.active{
+    color:var(--lime);
+    border-color:var(--lime);
+    background:var(--lime-bg);
+  }
+  .vpanel{display:none}
+  .vpanel.active{display:block}
+
   /* Outcome stat strip — investor headline numbers */
   .stat-strip{
     display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
@@ -557,7 +579,18 @@
 
   <div class="row">
     <div class="left-col">
-      <div class="canvas-wrap"><canvas id="chart-everton-investor"></canvas></div>
+      <div class="variant-tabs">
+        <button class="vtab active" data-v="a">A · Bright odds + score labels</button>
+        <button class="vtab" data-v="b">B · Faded odds, no goal labels</button>
+        <button class="vtab" data-v="c">C · Filled probability bands</button>
+        <button class="vtab" data-v="d">D · Realized line only (draw)</button>
+        <button class="vtab" data-v="e">E · No odds (price-only)</button>
+      </div>
+      <div class="vpanel active" data-v="a"><div class="canvas-wrap"><canvas id="chart-eviv-a"></canvas></div></div>
+      <div class="vpanel" data-v="b"><div class="canvas-wrap"><canvas id="chart-eviv-b"></canvas></div></div>
+      <div class="vpanel" data-v="c"><div class="canvas-wrap"><canvas id="chart-eviv-c"></canvas></div></div>
+      <div class="vpanel" data-v="d"><div class="canvas-wrap"><canvas id="chart-eviv-d"></canvas></div></div>
+      <div class="vpanel" data-v="e"><div class="canvas-wrap"><canvas id="chart-eviv-e"></canvas></div></div>
 
       <div class="stat-strip">
         <div class="stat-cell">
@@ -667,6 +700,11 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
+    // Lazy-render investor variant chart on first visit
+    if (btn.dataset.tab === 'everton-investor' && typeof ensureEvivChart === 'function') {
+      const activeV = document.querySelector('.vtab.active')?.dataset.v ?? 'a';
+      ensureEvivChart(activeV);
+    }
   });
 });
 
@@ -757,9 +795,16 @@ const liverpoolPrice = [
 function makeChart(canvasId, oddsData, priceData, cfg) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   const clean = !!cfg.cleanMode;
-  const fs = clean
-    ? { axisTitle: 13, axisTick: 12, projLabel: 12, evLabel: 12, legend: 12, priceWidth: 3.5 }
-    : { axisTitle: 11, axisTick: 10, projLabel: 9,  evLabel: 10, legend: 10, priceWidth: 2.5 };
+  const big = clean || !!cfg.bigFonts;
+  // oddsStyle: 'sharp' (default), 'faded', 'filled', 'realized-draw', 'none'
+  const oddsStyle = cfg.oddsStyle ?? (clean ? 'none' : 'sharp');
+  // goalLabels: 'name-stagger' (default), 'score-top', 'none'
+  const goalLabels = cfg.goalLabels ?? (clean ? 'none' : 'name-stagger');
+  const showProbAxis = oddsStyle !== 'none';
+
+  const fs = big
+    ? { axisTitle: 13, axisTick: 12, projLabel: 12, evLabel: 12, legend: 12, priceWidth: 3.5, goalLabel: 11 }
+    : { axisTitle: 11, axisTick: 10, projLabel: 9,  evLabel: 10, legend: 10, priceWidth: 2.5, goalLabel: 9 };
 
   const datasets = [{
     label: 'Notch Price ($)',
@@ -769,28 +814,70 @@ function makeChart(canvasId, oddsData, priceData, cfg) {
     borderWidth: fs.priceWidth, pointRadius: clean ? 0 : 2, pointHoverRadius: 6,
     tension: 0.15, yAxisID: 'yPrice', fill: true,
   }];
-  if (!clean) {
+
+  if (oddsStyle === 'sharp' || oddsStyle === 'faded') {
+    const a = oddsStyle === 'faded' ? 0.4 : 1;
     datasets.push(
       {
         label: cfg.subjectName + ' win %',
         data: oddsData.map(d => ({x: d[0], y: d[cfg.subjectIdx]})),
-        borderColor: '#4ade80', borderWidth: 1.5, borderDash: [5,4],
-        pointRadius: 2, tension: 0.1, yAxisID: 'yProb',
+        borderColor: oddsStyle === 'faded' ? `rgba(74,222,128,${a})` : '#4ade80',
+        borderWidth: 1.5, borderDash: [5,4],
+        pointRadius: oddsStyle === 'faded' ? 0 : 2, tension: 0.1, yAxisID: 'yProb',
       },
       {
         label: 'Draw %',
         data: oddsData.map(d => ({x: d[0], y: d[2]})),
-        borderColor: '#fbbf24', borderWidth: 1.5, borderDash: [5,4],
-        pointRadius: 1.5, tension: 0.1, yAxisID: 'yProb',
+        borderColor: oddsStyle === 'faded' ? `rgba(251,191,36,${a})` : '#fbbf24',
+        borderWidth: 1.5, borderDash: [5,4],
+        pointRadius: oddsStyle === 'faded' ? 0 : 1.5, tension: 0.1, yAxisID: 'yProb',
       },
       {
         label: cfg.opponentName + ' win %',
         data: oddsData.map(d => ({x: d[0], y: d[cfg.opponentIdx]})),
-        borderColor: '#f87171', borderWidth: 1.5, borderDash: [5,4],
-        pointRadius: 1.5, tension: 0.1, yAxisID: 'yProb',
+        borderColor: oddsStyle === 'faded' ? `rgba(248,113,113,${a})` : '#f87171',
+        borderWidth: 1.5, borderDash: [5,4],
+        pointRadius: oddsStyle === 'faded' ? 0 : 1.5, tension: 0.1, yAxisID: 'yProb',
       },
     );
+  } else if (oddsStyle === 'filled') {
+    datasets.push(
+      {
+        label: cfg.subjectName + ' win %',
+        data: oddsData.map(d => ({x: d[0], y: d[cfg.subjectIdx]})),
+        borderColor: 'rgba(74,222,128,0.55)',
+        backgroundColor: 'rgba(74,222,128,0.18)',
+        borderWidth: 1.2, fill: 'origin',
+        pointRadius: 0, tension: 0.2, yAxisID: 'yProb',
+      },
+      {
+        label: 'Draw %',
+        data: oddsData.map(d => ({x: d[0], y: d[2]})),
+        borderColor: 'rgba(251,191,36,0.55)',
+        backgroundColor: 'rgba(251,191,36,0.18)',
+        borderWidth: 1.2, fill: 'origin',
+        pointRadius: 0, tension: 0.2, yAxisID: 'yProb',
+      },
+      {
+        label: cfg.opponentName + ' win %',
+        data: oddsData.map(d => ({x: d[0], y: d[cfg.opponentIdx]})),
+        borderColor: 'rgba(248,113,113,0.55)',
+        backgroundColor: 'rgba(248,113,113,0.18)',
+        borderWidth: 1.2, fill: 'origin',
+        pointRadius: 0, tension: 0.2, yAxisID: 'yProb',
+      },
+    );
+  } else if (oddsStyle === 'realized-draw') {
+    datasets.push({
+      label: 'Draw % (realized)',
+      data: oddsData.map(d => ({x: d[0], y: d[2]})),
+      borderColor: '#fbbf24',
+      backgroundColor: 'rgba(251,191,36,0.10)',
+      borderWidth: 2.5, borderDash: [],
+      pointRadius: 0, tension: 0.2, yAxisID: 'yProb', fill: true,
+    });
   }
+  // 'none' → no odds datasets
 
   return new Chart(ctx, {
     type: 'line',
@@ -844,19 +931,37 @@ function makeChart(canvasId, oddsData, priceData, cfg) {
             // cfg.goals = [{min, label, color}, ...] — color: 'home' (red) or 'away' (green) for the subject team
             // In cleanMode, labels are hidden — only colored vertical lines are drawn.
             ...(Array.isArray(cfg.goals) ? Object.fromEntries(cfg.goals.map((g, i) => {
-              const yAdjust = -((i % 5) * 28);
-              return [`goal_${i}`, {
-                type: 'line', xMin: g.min, xMax: g.min,
-                borderColor: g.color === 'home' ? 'rgba(248,113,113,0.7)' : 'rgba(74,222,128,0.7)',
-                borderWidth: clean ? 1.5 : 1.5, borderDash: [4,3],
-                label: clean ? { display: false } : {
+              let label;
+              if (goalLabels === 'none') {
+                label = { display: false };
+              } else if (goalLabels === 'score-top') {
+                // Position labels at TOP of chart with 3-level vertical stagger
+                const yAdj = (i % 3) * 30;
+                label = {
+                  display: true, content: g.label, position: 'end',
+                  backgroundColor: g.color === 'home' ? 'rgba(248,113,113,0.20)' : 'rgba(74,222,128,0.20)',
+                  color: g.color === 'home' ? '#f87171' : '#4ade80',
+                  font: { size: fs.goalLabel, weight: 'bold' },
+                  yAdjust: yAdj,
+                  padding: 5,
+                };
+              } else {
+                // 'name-stagger' — original behavior, labels at bottom stair-stepping up
+                const yAdj = -((i % 5) * 28);
+                label = {
                   display: true, content: g.label, position: 'start',
                   backgroundColor: g.color === 'home' ? 'rgba(248,113,113,0.18)' : 'rgba(74,222,128,0.18)',
                   color: g.color === 'home' ? '#f87171' : '#4ade80',
                   font: { size: 9, weight: 'bold' },
-                  yAdjust: yAdjust,
+                  yAdjust: yAdj,
                   padding: 4,
-                }
+                };
+              }
+              return [`goal_${i}`, {
+                type: 'line', xMin: g.min, xMax: g.min,
+                borderColor: g.color === 'home' ? 'rgba(248,113,113,0.7)' : 'rgba(74,222,128,0.7)',
+                borderWidth: 1.5, borderDash: [4,3],
+                label,
               }];
             })) : {}),
             ft: {
@@ -886,12 +991,12 @@ function makeChart(canvasId, oddsData, priceData, cfg) {
           grid: { color: 'rgba(178,237,104,0.06)' },
           min: cfg.priceMin, max: cfg.priceMax,
         },
-        ...(clean ? {} : { yProb: {
+        ...(showProbAxis ? { yProb: {
           type: 'linear', position: 'right',
           title: { display: true, text: 'Bookmaker probability (%)', color: '#888', font: { size: fs.axisTitle } },
           ticks: { color: '#888', font: { size: fs.axisTick }, callback: (v) => v + '%' },
           grid: { drawOnChartArea: false }, min: 0, max: 100,
-        }})
+        }} : {})
       }
     }
   });
@@ -953,26 +1058,56 @@ makeChart('chart-everton', evertonOdds, evertonPrice, {
   xMin: -60, xMax: 145,
 });
 
-// Everton — Investor view: clean mode (no prob lines, no labels on goals, bigger fonts)
-makeChart('chart-everton-investor', evertonOdds, evertonPrice, {
-  cleanMode: true,
+// Everton — Investor view: 5 visual variants (a-e), each on a 720px chart.
+// Variant tabs swap which canvas is visible. Charts are rendered lazily on first view
+// so each canvas has correct dimensions when ChartJS measures it.
+const evivBase = {
+  bigFonts: true,
   subjectName: 'Everton', subjectIdx: 1,
   opponentName: 'Man City', opponentIdx: 3,
   winPrice: 122.86, winProb: 14,
   drawPrice: 117.74, drawProb: 20,
   lossPrice: 112.69, lossProb: 66,
   goalMin: null,
+  // Goals carry score-progression labels (used by variant A: 'score-top')
   goals: [
-    { min: 38,  color: 'away' },
-    { min: 85,  color: 'home' },
-    { min: 93,  color: 'home' },
-    { min: 99,  color: 'home' },
-    { min: 108, color: 'away' },
-    { min: 112, color: 'away' },
+    { min: 38,  color: 'away', label: '0-1' },  // Doku → City lead
+    { min: 85,  color: 'home', label: '1-1' },  // EVE equalizes
+    { min: 93,  color: 'home', label: '2-1' },  // EVE leads
+    { min: 99,  color: 'home', label: '3-1' },  // EVE +2
+    { min: 108, color: 'away', label: '3-2' },  // Haaland pulls one back
+    { min: 112, color: 'away', label: '3-3' },  // Doku equalizes
   ],
   snapFired: false,
   priceMin: 111, priceMax: 124,
   xMin: -60, xMax: 145,
+};
+
+const evivVariants = {
+  a: { oddsStyle: 'sharp',         goalLabels: 'score-top' },
+  b: { oddsStyle: 'faded',         goalLabels: 'none' },
+  c: { oddsStyle: 'filled',        goalLabels: 'none' },
+  d: { oddsStyle: 'realized-draw', goalLabels: 'none' },
+  e: { oddsStyle: 'none',          goalLabels: 'none' },
+};
+const evivCharts = {};
+function ensureEvivChart(letter) {
+  if (evivCharts[letter]) return;
+  evivCharts[letter] = makeChart(
+    `chart-eviv-${letter}`,
+    evertonOdds, evertonPrice,
+    { ...evivBase, ...evivVariants[letter] }
+  );
+}
+
+// Variant tab logic
+document.querySelectorAll('.vtab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const v = btn.dataset.v;
+    document.querySelectorAll('.vtab').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.vpanel').forEach(p => p.classList.toggle('active', p.dataset.v === v));
+    ensureEvivChart(v);
+  });
 });
 </script>
 </body>
