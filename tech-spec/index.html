@@ -262,7 +262,6 @@ tr:hover td{background:var(--hover)}
         <tr><td class="w">League cycle wins</td><td class="mono">500 – 30K NP</td><td>—</td><td>By cycle and tier</td></tr>
         <tr><td class="w">Referral milestone</td><td class="mono">500 NP</td><td>1× per referee</td><td>Referee first trade</td></tr>
         <tr><td class="w">Referral tail</td><td class="mono">1 NP / $100 ref notional</td><td class="mono">25K per referee</td><td>Lifetime stream</td></tr>
-        <tr><td class="w">Lucky Boost</td><td class="mono">5× / 10× / 25× single trade</td><td class="mono">Random ~5% trades</td><td>Replaces base multiplier for that trade</td></tr>
       </tbody>
     </table>
     <div class="callout"><span class="body-sm">Hard ceiling: <span class="mono" style="color:var(--lime)">30,000 NP / user / day</span> across all sources combined. Catches outliers automatically.</span></div>
@@ -273,11 +272,9 @@ tr:hover td{background:var(--hover)}
     <table>
       <thead><tr><th>Streak</th><th>Multiplier</th><th>Applies to</th></tr></thead>
       <tbody>
-        <tr><td class="w mono">1–2 days</td><td class="mono">1.0×</td><td rowspan="5" style="vertical-align:middle">NP from trading volume only.<br><span style="color:var(--t2)">Quest, league, referral NP not multiplied.</span></td></tr>
+        <tr><td class="w mono">1–2 days</td><td class="mono">1.0×</td><td rowspan="3" style="vertical-align:middle">NP from trading volume only.<br><span style="color:var(--t2)">Quest, league, referral NP not multiplied.</span></td></tr>
         <tr><td class="w mono">3–6 days</td><td class="mono">1.25×</td></tr>
-        <tr><td class="w mono">7–13 days</td><td class="mono">1.5×</td></tr>
-        <tr><td class="w mono">14–29 days</td><td class="mono">2.0×</td></tr>
-        <tr><td class="w mono">30+ days</td><td class="mono lime">3.0× (cap)</td></tr>
+        <tr><td class="w mono">7+ days</td><td class="mono lime">1.5× (cap)</td></tr>
       </tbody>
     </table>
     <p class="body-sm" style="margin-top:14px;color:var(--t2)">Rank multipliers are deferred to v2. v1 keeps the math simple — only one multiplier mechanic to teach users.</p>
