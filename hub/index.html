@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notch — Index</title>
+<meta name="description" content="The Notch index — every deck, product, spec, and animation in one place.">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<meta name="theme-color" content="#0c0e12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0e12;--border:#242629;--hover:#181b20;--lime:#b2ed68;--lime-bg:rgba(178,237,104,.06);--w:#eef1f6;--t1:#b0b5be;--t2:#8a8f98;--t3:#606267;--blue:#5b8def;--purple:#a78bfa;--amber:#f5c542;--red:#ef6b6b}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);font-family:'Space Grotesk',sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased;min-height:100vh}
+.mono{font-family:'Space Mono',monospace}
+a{color:inherit;text-decoration:none}
+
+/* fading grid backdrop */
+#grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.6;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(ellipse 90% 60% at 50% -5%,#000,transparent 70%);
+  mask-image:radial-gradient(ellipse 90% 60% at 50% -5%,#000,transparent 70%)}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 1.5rem}
+@media(min-width:768px){.wrap{padding:0 3rem}}
+
+/* ── header ── */
+.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:11px}
+.brand img.mark{height:26px;width:26px;display:block;border-radius:6px}
+.brand img.word{height:19px;width:auto;display:block;opacity:.95}
+.top .live{display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--t2)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--lime);animation:pul 2.4s ease-in-out infinite}
+@keyframes pul{0%,100%{box-shadow:0 0 0 0 rgba(178,237,104,.45)}50%{box-shadow:0 0 0 7px rgba(178,237,104,0)}}
+
+/* ── hero ── */
+.hero{padding:72px 0 40px}
+@media(min-width:768px){.hero{padding:104px 0 52px}}
+.kicker{font-family:'Space Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:var(--lime)}
+.hero h1{font-weight:700;font-size:clamp(40px,8vw,82px);line-height:1.02;color:var(--w);letter-spacing:-.02em;margin:18px 0 0}
+.hero p{font-size:clamp(15px,2.2vw,18px);line-height:1.55;color:var(--t1);max-width:520px;margin:22px 0 0}
+.hero p b{color:var(--w);font-weight:600}
+
+/* ── controls ── */
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:38px 0 6px}
+.search{flex:1;min-width:220px;position:relative}
+.search input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--w);font-family:'Space Mono',monospace;font-size:13px;padding:13px 14px 13px 38px;outline:none;transition:border-color .2s,background .2s}
+.search input::placeholder{color:var(--t3)}
+.search input:focus{border-color:var(--lime);background:var(--lime-bg)}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--t3)}
+.count{font-family:'Space Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);white-space:nowrap}
+.count b{color:var(--lime)}
+
+/* ── section ── */
+.section{margin:48px 0 0}
+.sec-head{display:flex;align-items:center;gap:14px;margin-bottom:1px;padding-bottom:14px}
+.sec-bar{width:26px;height:3px;border-radius:2px}
+.sec-head h2{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--w)}
+.sec-head .n{font-family:'Space Mono',monospace;font-size:12px;color:var(--t3);margin-left:auto}
+
+/* ── card grid (border-gap aesthetic) ── */
+.grid{display:grid;grid-template-columns:1fr;gap:0;border-top:1px solid var(--border);border-left:1px solid var(--border)}
+@media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+@media(min-width:1000px){.grid{grid-template-columns:1fr 1fr 1fr}}
+.card{position:relative;background:var(--bg);padding:24px 22px 20px;display:flex;flex-direction:column;min-height:158px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);transition:background .2s;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ac);transform:scaleY(0);transform-origin:top;transition:transform .28s cubic-bezier(.16,1,.3,1)}
+.card:hover{background:var(--hover)}
+.card:hover::before{transform:scaleY(1)}
+.card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.idx{font-family:'Space Mono',monospace;font-size:12px;color:var(--t3)}
+.tag{font-family:'Space Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ac);border:1px solid var(--border);padding:3px 7px;border-radius:2px}
+.card h3{font-weight:600;font-size:18px;line-height:1.2;color:var(--w);letter-spacing:-.01em}
+.card .desc{font-size:13px;line-height:1.45;color:var(--t2);margin-top:8px}
+.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:16px}
+.path{font-family:'Space Mono',monospace;font-size:12px;color:var(--ac);opacity:.85}
+.arrow{font-family:'Space Mono',monospace;font-size:15px;color:var(--t2);transition:transform .25s,color .25s}
+.card:hover .arrow{transform:translateX(4px);color:var(--ac)}
+
+.empty{display:none;padding:48px 4px;font-family:'Space Mono',monospace;font-size:13px;color:var(--t2)}
+.empty b{color:var(--w)}
+
+/* ── footer ── */
+footer{margin:72px 0 0;border-top:1px solid var(--border);padding:30px 0 56px;display:flex;flex-wrap:wrap;gap:18px 32px;align-items:baseline;justify-content:space-between}
+footer .hosts{font-family:'Space Mono',monospace;font-size:12px;line-height:1.9;color:var(--t2)}
+footer .hosts span{color:var(--t3)}
+footer .hosts b{color:var(--t1);font-weight:400}
+footer .sig{font-family:'Space Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3)}
+
+.reveal{opacity:0;transform:translateY(14px)}
+.reveal.in{opacity:1;transform:none;transition:opacity .55s cubic-bezier(.16,1,.3,1),transform .55s cubic-bezier(.16,1,.3,1)}
+</style>
+</head>
+<body>
+<div id="grid-bg"></div>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <img class="word" src="../assets/notch.svg" alt="NOTCH">
+    </div>
+    <div class="live"><span class="dot"></span>Index · live</div>
+  </div>
+
+  <header class="hero">
+    <div class="kicker">// Directory</div>
+    <h1>Every page,<br>one place.</h1>
+    <p>The full set of Notch decks, products, specs, and animations — <b>each its own page</b>, all reachable from here.</p>
+  </header>
+
+  <div class="controls">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+      <input id="q" type="text" placeholder="filter pages…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="count"><b id="shown">0</b> / <span id="total">0</span> pages</div>
+  </div>
+
+  <main id="sections"></main>
+
+  <div class="empty" id="empty">No pages match "<b id="qecho"></b>".</div>
+
+  <footer>
+    <div class="hosts">
+      <span>// served from</span><br>
+      <b>frertommy.github.io/DEck/hub/</b><br>
+      <b>frertommy.github.io/notch/hub/</b>
+    </div>
+    <div class="sig">Notch · static index</div>
+  </footer>
+
+</div>
+
+<script>
+const SECTIONS = [
+  { label:"Pitch & Narrative", accent:"var(--lime)", pages:[
+    {path:"../",            tag:"Deck",  title:"Main Deck",            desc:"The flagship pitch — full product and market narrative."},
+    {path:"../pitch-v3/",   tag:"Pitch", title:"Sales Pitch v3",       desc:"“Sports betting, properly understood.” The v3 sales site."},
+    {path:"../memo/",       tag:"Memo",  title:"Investor Memo",        desc:"Long-form thesis, written to be read end to end."},
+    {path:"../compare/",    tag:"Essay", title:"Four Precedents",      desc:"How continuous derivatives dwarfed what came before."},
+  ]},
+  { label:"Engine & Spec", accent:"var(--amber)", pages:[
+    {path:"../price-engine/", tag:"Engine", title:"Engine Architecture",  desc:"JOJO pricing engine — how every price is made."},
+    {path:"../formula/",      tag:"Spec",   title:"Engineering Blueprints",desc:"JOJO formulas and engineering blueprints."},
+    {path:"../tech-spec/",    tag:"Spec",   title:"Technical Spec",        desc:"Notch v1 — the full technical specification."},
+    {path:"../multileg/",     tag:"Model",  title:"Settlement & Sizing",   desc:"Settlement projections and multi-leg position sizing."},
+  ]},
+  { label:"Sports Products", accent:"var(--blue)", pages:[
+    {path:"../leagues/",  tag:"Product", title:"Leagues v2",          desc:"The season-long leagues product."},
+    {path:"../charts/",   tag:"Data",    title:"Match Deep-dives",    desc:"Per-match deep-dive charts and breakdowns."},
+    {path:"../retail/",   tag:"MLB",     title:"MLB Packaged Payouts",desc:"Notch Quick MLB — retail-ready packaged payouts."},
+    {path:"../NBACARD/",  tag:"NBA",     title:"NBA Card",            desc:"Option 3.5 — the collapsible bucket ladder."},
+    {path:"../nba-101/",  tag:"NBA",     title:"NBA 101",             desc:"A visual, interactive guide to NBA markets."},
+  ]},
+  { label:"Motion & Concepts", accent:"var(--purple)", pages:[
+    {path:"../notch-animation/", tag:"Motion", title:"Animations", desc:"26 animated concept loops in one gallery."},
+    {path:"../adsv0/",           tag:"Proto",  title:"Ads v0",     desc:"Live-price trading interface prototype."},
+  ]},
+];
+
+const TOTAL = SECTIONS.reduce((n,s)=>n+s.pages.length,0);
+let counter = 0;
+const root = document.getElementById('sections');
+
+SECTIONS.forEach(sec=>{
+  const wrap = document.createElement('section');
+  wrap.className = 'section';
+  wrap.style.setProperty('--ac', sec.accent);
+
+  const head = document.createElement('div');
+  head.className = 'sec-head';
+  head.innerHTML = `<span class="sec-bar" style="background:${sec.accent}"></span><h2>${sec.label}</h2><span class="n">${String(sec.pages.length).padStart(2,'0')}</span>`;
+  wrap.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  sec.pages.forEach(p=>{
+    counter++;
+    const a = document.createElement('a');
+    a.className = 'card reveal';
+    a.href = p.path;
+    a.style.setProperty('--ac', sec.accent);
+    a.dataset.search = (p.title+' '+p.desc+' '+p.path+' '+p.tag).toLowerCase();
+    a.innerHTML = `
+      <div class="card-top">
+        <span class="idx">${String(counter).padStart(2,'0')}</span>
+        <span class="tag">${p.tag}</span>
+      </div>
+      <h3>${p.title}</h3>
+      <div class="desc">${p.desc}</div>
+      <div class="card-foot">
+        <span class="path">${p.path}</span>
+        <span class="arrow">→</span>
+      </div>`;
+    grid.appendChild(a);
+  });
+  wrap.appendChild(grid);
+  root.appendChild(wrap);
+});
+
+document.getElementById('total').textContent = TOTAL;
+document.getElementById('shown').textContent = TOTAL;
+
+// reveal on scroll
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach((e,i)=>{ if(e.isIntersecting){ e.target.style.transitionDelay=(Math.min(i,6)*40)+'ms'; e.target.classList.add('in'); io.unobserve(e.target);} });
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// live filter
+const q = document.getElementById('q');
+const shown = document.getElementById('shown');
+const empty = document.getElementById('empty');
+const qecho = document.getElementById('qecho');
+q.addEventListener('input', ()=>{
+  const term = q.value.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('.section').forEach(sec=>{
+    let secVisible = 0;
+    sec.querySelectorAll('.card').forEach(card=>{
+      const match = !term || card.dataset.search.includes(term);
+      card.style.display = match ? '' : 'none';
+      if(match){ visible++; secVisible++; }
+    });
+    sec.style.display = secVisible ? '' : 'none';
+  });
+  shown.textContent = visible;
+  qecho.textContent = q.value;
+  empty.style.display = visible ? 'none' : 'block';
+});
+</script>
+</body>
+</html>
