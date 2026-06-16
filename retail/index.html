@@ -3312,9 +3312,9 @@
               </div>
 
               <div class="qp-summary">
-                <div class="qp-line"><span>Current price</span><span class="val" id="qp-current-price">$290.42</span></div>
-                <div class="qp-line"><span id="qp-profit-dir-lbl">Profits as price ↑</span><span class="val" id="qp-profit-dir" style="color:var(--lime)">PHI rising</span></div>
-                <div class="qp-line"><span>Liquidates at</span><span class="val" id="qp-loss-price" style="color:var(--red)">$280.74 (−3.33%)</span></div>
+                <div class="qp-line"><span>Current price</span><span class="val" id="qp-current-price">$119.31</span></div>
+                <div class="qp-line"><span id="qp-win-lbl">Price if PHI win ↑</span><span class="val" id="qp-win-price" style="color:var(--lime)">$121.74 (+2.04%)</span></div>
+                <div class="qp-line"><span>Liquidates at ↓</span><span class="val" id="qp-loss-price" style="color:var(--red)">$116.92 (−2.00%)</span></div>
                 <div class="qp-line"><span>Your trade size</span><span class="val" id="qp-bet">$50.00</span></div>
                 <div class="qp-line win"><span>You win</span><span class="val" id="qp-win">$46.00</span></div>
               </div>
@@ -3781,14 +3781,15 @@
     mci: 412.18, liv: 308.92, che: 215.65,
     rma: 487.20, bar: 320.45,
     psg: 425.60, om: 132.85,
-    bos: 617.42, nyy: 854.18,
-    tor: 523.14, bal: 684.92,
-    phi: 782.04, nym: 441.18,
-    atl: 798.50, mil: 524.30,
-    sd: 498.31, lad: 1247.65,
-    mia: 312.50, cws: 268.40,
-    sf: 540.15, chc: 705.80,
-    col: 188.90, tb: 233.60
+    // Real oracle index prices — MLB2026 v2_index_history (2026-06-16)
+    ari: 113.75, atl: 179.91, bal: 95.04, bos: 80.37,
+    chc: 100.88, cws: 138.85, cin: 98.69, cle: 120.08,
+    col: 53.02, det: 70.66, hou: 77.57, kc: 67.56,
+    laa: 61.56, lad: 170.00, mia: 92.27, mil: 157.68,
+    min: 83.01, nym: 83.27, nyy: 149.96, oak: 99.35,
+    phi: 119.31, pit: 90.04, sd: 113.91, sf: 72.68,
+    sea: 88.86, stl: 116.03, tb: 138.78, tex: 96.00,
+    tor: 97.71, wsh: 104.87
   };
 
   const qpOverlay = document.getElementById('quickpick-overlay');
@@ -3820,22 +3821,27 @@
     document.getElementById('qp-payout').textContent = fmtPayout(base * leverage);
 
     // Price info — show for single-team picks, hide for draws
-    const priceRows = document.querySelectorAll('#qp-current-price, #qp-profit-dir, #qp-loss-price');
+    const priceRows = document.querySelectorAll('#qp-current-price, #qp-win-price, #qp-loss-price');
     const price = teamPrices[meta.logo];
     if (price && meta.logo !== 'draw') {
       const side = meta.outcome.startsWith('Short') ? 'short' : 'long';
-      const buffer = 100 / leverage;
+      const liqBuffer = 100 / leverage;       // % move that liquidates the position
+      const winBuffer = base;                  // % move that realizes the shown payout
       const lossPrice = side === 'short'
         ? price * (1 + 1/leverage)
         : price * (1 - 1/leverage);
-      const sign = side === 'short' ? '+' : '−';
+      const winPrice = side === 'short'
+        ? price * (1 - base/100)
+        : price * (1 + base/100);
+      const lossSign = side === 'short' ? '+' : '−';
+      const winSign = side === 'short' ? '−' : '+';
       document.getElementById('qp-current-price').textContent = '$' + price.toFixed(2);
-      document.getElementById('qp-profit-dir-lbl').textContent =
-        side === 'short' ? 'Profits as price ↓' : 'Profits as price ↑';
-      document.getElementById('qp-profit-dir').textContent =
-        (meta.team || '') + (side === 'short' ? ' falling' : ' rising');
+      document.getElementById('qp-win-lbl').textContent =
+        (side === 'short' ? 'Price if ' + (meta.team || '') + ' lose ↓' : 'Price if ' + (meta.team || '') + ' win ↑');
+      document.getElementById('qp-win-price').textContent =
+        '$' + winPrice.toFixed(2) + ' (' + winSign + winBuffer.toFixed(2) + '%)';
       document.getElementById('qp-loss-price').textContent =
-        '$' + lossPrice.toFixed(2) + ' (' + sign + buffer.toFixed(2) + '%)';
+        '$' + lossPrice.toFixed(2) + ' (' + lossSign + liqBuffer.toFixed(2) + '%)';
       priceRows.forEach(el => el.parentElement.style.display = '');
     } else {
       // Draw product: hide single-team price info
